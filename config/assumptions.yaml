@@ -1,0 +1,28 @@
+# Problem parameters and modeling assumptions (S1–S8).
+
+initial_capital_cop: 760_000_000
+
+loan:
+  principal_uvr: 1_000_000
+  term_months: 120
+  annual_rate: 0.10            # UVR + 10% effective annual
+  grace_months: 36             # S1: full grace, interest is capitalized
+  prepayments_uvr:             # S5: agreed upfront, term and payment stay fixed
+    48: 50_000                 # S7: end of year 4
+    60: 50_000                 # S7: end of year 5
+
+backtest:
+  t0: 2016-10                  # S4: historical start date
+  horizon_months: 120
+  rebalance_every: 6           # S8: dynamic strategy re-estimation frequency (months)
+  rebalance_sensitivity: [3, 6, 12]
+
+inflation_scenarios:
+  high_shock_pp: 3.0           # high = base + 3 pp
+  low_shock_pp: -1.5           # low = base - 1.5 pp
+
+rules:
+  zero_shortfall: true         # S2: cash must cover every payment
+  min_funding_ratio: 1.10      # cut risk below this level
+  taxes: false                 # S3
+  transaction_costs: false     # S6
