@@ -21,9 +21,38 @@ The project:
 4. Backtests the 10 years with real data (Oct 2016 → Oct 2026), comparing a **static** strategy (chosen once at
    t₀) with a **dynamic** one (re-estimated and rebalanced every 6 months).
 
+## Setup
+
+The virtual environment is managed with [uv](https://docs.astral.sh/uv/):
+
+```
+uv venv
+uv pip install -e ".[dev]"
+```
+
+Lint and format with [ruff](https://docs.astral.sh/ruff/) before committing:
+
+```
+ruff check .
+ruff format .
+```
+
+## Usage
+
+Generate the loan payment schedule in UVR (month by month: balance, interest, installment, prepayment and total
+payment):
+
+```
+.venv\Scripts\python -m uvr_loan.amortization
+```
+
+It writes `data/processed/payment_schedule_uvr.csv` and checks that the balance at month 120 is zero. The fixed
+installment for months 37–120 is 20,379.5327 UVR; months 48 and 60 add the 50,000 UVR prepayments. The
+`total_payment_uvr` column is the cash the portfolio must deliver each month.
+
 ## Architecture
 
-Target structure. Most of it does not exist yet.
+Target structure. So far only `config/assumptions.yaml`, `config.py` and `amortization.py` exist.
 
 ```
 .
@@ -31,8 +60,9 @@ Target structure. Most of it does not exist yet.
 │   └── assumptions.yaml      # Every problem parameter and modeling assumption
 ├── data/
 │   ├── raw/                  # Download cache (UVR, CPI, TES curves, CDT rates, COLCAP, FIC)
-│   └── processed/            # Clean monthly series
+│   └── processed/            # Clean monthly series and payment_schedule_uvr.csv
 ├── notebooks/                # Exploration and charts; they import uvr_loan
+├── pyproject.toml            # Package metadata and dependencies (numpy, pandas, pyyaml)
 ├── src/uvr_loan/
 │   ├── config.py             # Loads assumptions.yaml
 │   ├── amortization.py       # UVR amortization schedule (grace + prepayments)

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uvr_loan"
+version = "0.1.0"
+description = "Investment strategy to fund a UVR-denominated loan."
+requires-python = ">=3.10"
+dependencies = ["numpy", "pandas", "pyyaml"]
+
+[project.optional-dependencies]
+dev = ["ruff"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+extend-select = ["I", "UP", "B"]
