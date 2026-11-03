@@ -7,6 +7,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSUMPTIONS_PATH = ROOT / "config" / "assumptions.yaml"
+RESULTS_DIR = ROOT / "results"
 
 
 def load_assumptions(path: Path = ASSUMPTIONS_PATH) -> dict[str, Any]:

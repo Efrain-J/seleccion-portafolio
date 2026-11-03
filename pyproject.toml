@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 dependencies = ["numpy", "pandas", "pyyaml", "truststore", "yfinance"]
 
 [project.optional-dependencies]
-dev = ["ruff", "pytest", "pytest-cov"]
+dev = ["ruff", "pytest", "pytest-cov", "matplotlib", "ipykernel", "nbconvert"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

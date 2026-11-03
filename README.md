@@ -83,17 +83,31 @@ Print the conservative allocation (Plan 1) at t0:
 Plan 1 keeps in the FIC the payments due before the next review (high inflation scenario), puts
 `conservative.equity_weight` of the rest in the ETF and the remainder in a CDT that matures at the next review. Every
 parameter (t0, review frequency, ETF weight, inflation scenarios, data series) is read from
-`config/assumptions.yaml`.
+`config/assumptions.yaml`. The full rule, with examples and simplifications, is in
+[`docs/reglas_de_inversion.md`](docs/reglas_de_inversion.md).
+
+Run the dynamic backtest of Plan 1 from t0 to the end of the horizon (reviews every `rebalance_every` months):
+
+```
+.venv\Scripts\python -m uvr_loan.backtest
+```
+
+It writes `results/backtest_conservative.csv` (one row per month: payment in COP, shortfall, FIC, CDT, ETF and total
+wealth) and `results/summary_conservative.csv` (months with shortfall, minimum liquidity, final wealth, annualized
+time-weighted return and volatility, maximum drawdown). If the FIC cannot cover a payment, the shortfall is recorded
+and nothing is sold.
 
 ## Architecture
 
-Target structure. So far `config.py`, `amortization.py`, `data/`, `inflation.py`, `cashflows.py`, `portfolio.py` and
-`tests/` exist.
+Target structure. So far `config.py`, `amortization.py`, `data/`, `inflation.py`, `cashflows.py`, `portfolio.py`,
+`backtest.py` and `tests/` exist.
 
 ```
 .
 ├── config/
 │   └── assumptions.yaml      # Every problem parameter and modeling assumption
+├── docs/
+│   └── reglas_de_inversion.md  # Investment rules of each plan
 ├── data/
 │   ├── SOURCES.md            # Where every series comes from (versioned)
 │   ├── raw/                  # Download cache (UVR, CPI, TES curves, CDT rates, COLCAP, FIC)
@@ -111,13 +125,10 @@ Target structure. So far `config.py`, `amortization.py`, `data/`, `inflation.py`
 │   ├── diagnosis.py          # Present value of payments, required IRR, funding ratio, duration
 │   ├── assets.py             # Instruments: FIC, CDT, TES UVR, fixed-rate TES, equity
 │   ├── portfolio.py          # Dedicated (cash-flow matching) + surplus portfolios; allocation profiles
-│   ├── backtest/
-│   │   ├── engine.py         # Monthly simulation loop with a no-look-ahead guard
-│   │   ├── static.py         # Static strategy (decides once at t₀)
-│   │   └── dynamic.py        # Dynamic strategy (re-estimates every k months)
-│   ├── metrics.py            # Shortfalls, surplus, return/volatility, drawdown, turnover
+│   ├── backtest.py           # Monthly simulation with reviews every k months, and summary metrics
 │   ├── scenarios.py          # Stress tests and sensitivity analysis
 │   └── plots.py              # Charts for the report
+├── results/                  # Backtest outputs (CSV)
 ├── reports/                  # Final report and figures
 └── tests/                    # pytest suite
 ```
