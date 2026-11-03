@@ -37,6 +37,14 @@ ruff check .
 ruff format .
 ```
 
+Run the tests with [pytest](https://docs.pytest.org/). Tests marked `network` download real data:
+
+```
+pytest -m "not network"      # offline
+pytest                       # everything
+pytest --cov=uvr_loan        # with coverage
+```
+
 ## Usage
 
 Generate the loan payment schedule in UVR (month by month: balance, interest, installment, prepayment and total
@@ -50,15 +58,44 @@ It writes `data/processed/payment_schedule_uvr.csv` and checks that the balance 
 installment for months 37–120 is 20,379.5327 UVR; months 48 and 60 add the 50,000 UVR prepayments. The
 `total_payment_uvr` column is the cash the portfolio must deliver each month.
 
+Download the market data and build the monthly panel (end of month, rates as decimals):
+
+```
+.venv\Scripts\python -m uvr_loan.data.sources     # cache in data/raw/
+.venv\Scripts\python -m uvr_loan.data.cleaning    # data/processed/monthly_panel.csv
+```
+
+| Column | Source | Notes |
+|---|---|---|
+| `uvr` | BanRep SUAMECA, series 850 | COP per UVR, daily |
+| `cdt_180` | BanRep SUAMECA, series 67 | CDT 180 days, weekly, effective annual |
+| `fic` | BanRep SUAMECA, series 65 | DTF 90 days, used as a proxy for FIC returns |
+| `etf` | Yahoo Finance, `ICOLCAP.CL` | iShares COLCAP, adjusted close in COP |
+
+Endpoints, units, assumptions and known issues of every source are in [`data/SOURCES.md`](data/SOURCES.md).
+
+Print the conservative allocation (Plan 1) at t0:
+
+```
+.venv\Scripts\python -m uvr_loan.portfolio
+```
+
+Plan 1 keeps in the FIC the payments due before the next review (high inflation scenario), puts
+`conservative.equity_weight` of the rest in the ETF and the remainder in a CDT that matures at the next review. Every
+parameter (t0, review frequency, ETF weight, inflation scenarios, data series) is read from
+`config/assumptions.yaml`.
+
 ## Architecture
 
-Target structure. So far only `config/assumptions.yaml`, `config.py` and `amortization.py` exist.
+Target structure. So far `config.py`, `amortization.py`, `data/`, `inflation.py`, `cashflows.py`, `portfolio.py` and
+`tests/` exist.
 
 ```
 .
 ├── config/
 │   └── assumptions.yaml      # Every problem parameter and modeling assumption
 ├── data/
+│   ├── SOURCES.md            # Where every series comes from (versioned)
 │   ├── raw/                  # Download cache (UVR, CPI, TES curves, CDT rates, COLCAP, FIC)
 │   └── processed/            # Clean monthly series and payment_schedule_uvr.csv
 ├── notebooks/                # Exploration and charts; they import uvr_loan

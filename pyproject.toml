@@ -7,10 +7,10 @@ name = "uvr_loan"
 version = "0.1.0"
 description = "Investment strategy to fund a UVR-denominated loan."
 requires-python = ">=3.10"
-dependencies = ["numpy", "pandas", "pyyaml"]
+dependencies = ["numpy", "pandas", "pyyaml", "truststore", "yfinance"]
 
 [project.optional-dependencies]
-dev = ["ruff"]
+dev = ["ruff", "pytest", "pytest-cov"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -21,3 +21,11 @@ target-version = "py310"
 
 [tool.ruff.lint]
 extend-select = ["I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers"]
+markers = ["network: downloads real data (needs internet)"]
+
+[tool.coverage.report]
+exclude_also = ['if __name__ == "__main__":']
