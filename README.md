@@ -94,7 +94,7 @@ next review, and leaves the remainder in the FIC; during the grace period everyt
 parameter (t0, review frequency, CDT weight, inflation scenarios, data series) is read from
 `config/assumptions.yaml`. Plan 2 (CDT ladder) buys fixed-rate CDTs of 3, 6 and 12 months chosen with a linear
 program in UVR that covers every remaining payment and maximizes the final wealth; the decision uses expected real
-returns, and the results use the observed CDT rates. Plan 3 (LDI) computes a floor, the smallest budget of that same
+returns (deflated with the high inflation scenario, like plans 1 and 3), and the results use the observed CDT rates. Plan 3 (LDI) computes a floor, the smallest budget of that same
 LP that covers every remaining payment under high inflation, gives the CDT ladder 1.05 × floor and puts the rest in
 ICOLCAP and CSPX, split by inverse volatility (CPPI with multiplier 1: a fall of the ETFs never reaches the money for
 the payments). Every reported peso comes from observed data. The base inflation of the

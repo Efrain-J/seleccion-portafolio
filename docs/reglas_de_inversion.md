@@ -63,12 +63,13 @@ $\tau$ es un dato conocido al cierre del mes $\tau$. El orden dentro de un mes e
 
 **Escenarios de inflación.** En cada $\tau$ hay tres: base $=\pi^{\text{base}}_\tau$, alto
 $\pi^{\text{alto}}_\tau = \pi^{\text{base}}_\tau + 0{,}03$ y bajo $\pi^{\text{bajo}}_\tau = \pi^{\text{base}}_\tau -
-0{,}015$. $\pi_\tau$ denota el escenario que usa cada plan:
+0{,}015$. $\pi_\tau$ denota el escenario que usa cada plan. Los tres usan el alto, para que tengan el mismo margen
+contra la inflación y sus resultados se puedan comparar (un test avisa si las tres claves del YAML difieren):
 
 | Plan | $\pi_\tau$ | Para qué | YAML |
 |---|---|---|---|
 | 1 | $\pi^{\text{alto}}_\tau$ | Proyectar los pagos que guarda el FIC | `conservative.fic_sizing_scenario` |
-| 2 | $\pi^{\text{base}}_\tau$ | Pasar las tasas nominales a reales en el LP | `cdt_ladder.deflator_scenario` |
+| 2 | $\pi^{\text{alto}}_\tau$ | Pasar las tasas nominales a reales en el LP | `cdt_ladder.deflator_scenario` |
 | 3 | $\pi^{\text{alto}}_\tau$ | Calcular el piso y comprar la escalera | `ldi.floor_scenario` |
 
 **Plan 2 (variables del LP):**
@@ -260,7 +261,8 @@ rinden sus tasas **observadas** (BanRep e índice de FIC); solo la decisión usa
 
 Los pagos están fijos en UVR, así que el LP trabaja en UVR. Como los CDT y el FIC pagan en pesos, el LP necesita su
 rendimiento en UVR, que no se conoce de antemano: usa el **esperado**, $\tilde r_j(\tau)$ y $\rho_\tau$, con
-$\pi_\tau = \pi^{\text{base}}_\tau$ (`cdt_ladder.deflator_scenario`).
+$\pi_\tau = \pi^{\text{alto}}_\tau$ (`cdt_ladder.deflator_scenario`), que es el margen para el riesgo de que la
+inflación supere lo esperado.
 
 1. **Datos (en UVR):** los pagos $P_m$ de los meses $\tau+1, \dots, H$; lo que vence de los CDT vivos, $M_m$; el
    dinero libre $B_\tau$; los rendimientos reales esperados $\tilde r_j(\tau)$ y $\rho_\tau$.
@@ -297,8 +299,8 @@ $$
 
 | Revisión | Dinero libre | FIC | CDT 3 meses | CDT 6 meses | CDT 12 meses |
 |---|---|---|---|---|---|
-| oct-2016 (gracia) | 760,0M | 0 | 0 | 164,5M | 595,5M |
-| oct-2019 (antes de la primera cuota) | 711,3M | 11,0M | 16,5M | 12,3M | 671,5M |
+| oct-2016 (gracia) | 760,0M | 0 | 0 | 198,4M | 561,6M |
+| oct-2019 (antes de la primera cuota) | 678,8M | 11,0M | 16,6M | 4,5M | 646,6M |
 
 En oct-2016 las tasas eran 6,99 % (90 días), 7,24 % (180) y 8,18 % (360): sin pagos durante la gracia, casi todo va al
 plazo más largo. En oct-2019 el dinero libre es menor que la riqueza total porque hay CDT comprados antes que siguen
@@ -307,9 +309,10 @@ vivos.
 ### Riesgo
 
 Los CDT son de tasa fija: si la inflación supera la esperada, los pagos en COP crecen más que el dinero. Con la
-inflación base, el backtest tiene 9 meses con déficit (1,18M COP en total); el mayor es sep-2026 (0,70M). En
-abr-2026 no hubo escalera posible y el dinero quedó en el FIC. La riqueza final es 782,3M; descontando los pagos que
-quedaron sin cubrir, la riqueza neta es 781,1M.
+inflación alta, el backtest tiene 2 meses con déficit, ambos muy pequeños: jun-2021 (38.611 COP) y jun-2022
+(9.503 COP), 48.114 COP en total. En abr-2026 no hubo escalera posible y el dinero quedó en el FIC. La riqueza final es
+780,1M; descontando los pagos que quedaron sin cubrir, la riqueza neta también es 780,1M. Con la inflación base había
+9 meses con déficit (1,18M COP) y la riqueza final era 782,3M.
 
 ### Simplificaciones propias del plan 2
 
@@ -325,10 +328,12 @@ quedaron sin cubrir, la riqueza neta es 781,1M.
     los CDT comprados a la tasa anterior;
   - el error absoluto medio del rendimiento nominal del FIC es 1,29 p.p. y tiende a subestimarlo (−0,78 p.p. en
     promedio) cuando las tasas suben; el mayor error fue 5,87 p.p. en oct-2022;
-  - el error de $\rho_\tau$ es mayor, 2,30 p.p. en promedio, y viene sobre todo de la inflación base (S14), no del FIC;
+  - el error de $\rho_\tau$ es mayor, 3,57 p.p. en promedio, y viene sobre todo de la inflación, no del FIC: el
+    escenario alto lo sesga a propósito hacia abajo (−3,44 p.p. en promedio, es decir, es pesimista); con la base
+    sería 2,30 p.p.;
   - **si el último mes del FIC fue negativo**, $\rho_\tau$ queda muy negativo (oct-2021:
-    $\bar r^{\text{FIC}}_\tau$ = −0,91 %, $\rho_\tau$ = −6,22 %). El LP no falla: guarda en caja solo lo
-    indispensable, aparta un poco más para compensar la pérdida esperada (alrededor del 0,5–1 % de esa caja) y pone
+    $\bar r^{\text{FIC}}_\tau$ = −0,91 %, $\rho_\tau$ = −8,81 %). El LP no falla: guarda en caja solo lo
+    indispensable, aparta un poco más para compensar la pérdida esperada y pone
     el resto en CDT. Después de oct-2021 el FIC rindió +2,69 %, así que el pronóstico fue pesimista, sin costo. El
     caso que sí puede afectar es el contrario (pronóstico positivo y mes real negativo), en el que la caja queda un
     poco corta; el índice solo tuvo 4 meses negativos en 10 años (el peor, −0,16 %). No se pone un piso al pronóstico.
@@ -424,7 +429,7 @@ pagos.
 
 - Sin meses con déficit. Dos veces el FIC quedó corto por muy poco y se vendieron ETF: jun-2021 (41.468 COP) y jun-2022
   (9.651 COP).
-- Riqueza final 1.352,5M (plan 1: 701,0M; plan 2: 782,3M). Rentabilidad anual 11,9 %, volatilidad 8,3 %, máxima caída
+- Riqueza final 1.352,5M (plan 1: 701,0M; plan 2: 780,1M). Rentabilidad anual 11,9 %, volatilidad 8,3 %, máxima caída
   7,1 % (los planes 1 y 2 tienen volatilidad cercana a 1 % y no tienen caídas).
 - **Cuidado con leer el resultado como una predicción.** Buena parte de la diferencia viene de 2024–2025, cuando
   ICOLCAP y el S&P 500 subieron mucho, algo que no se sabía en 2016. Además, a medida que se pagan las cuotas el piso
