@@ -41,12 +41,15 @@ def conservative_strategy(
     """Plan 1. Its CDT matures exactly at the next review, so no lot is alive at a review.
 
     The FIC holds the payments of months tau+1 .. tau+k-1 (the CDT matures in month tau+k and
-    pays that month, S12) plus (1 - `cdt_weight`) of the rest. There is no ETF.
+    pays that month, S12) plus (1 - `cdt_weight`) of the rest. During the grace period
+    (tau < `grace_months`) `grace_cdt_weight` is used instead. There is no ETF.
     """
     params, k = cfg["conservative"], cfg["backtest"]["review_every_months"]
     row = history.iloc[-1]
     inflation = scenarios(cfg, history["uvr_cop"])[params["fic_sizing_scenario"]]
     projected = projected_payments_cop(payment_schedule, tau, row["uvr_cop"], inflation, k - 1)
+    if tau < cfg["loan"]["grace_months"]:  # no payments yet: the FIC share also goes to the CDT
+        params = {**params, "cdt_weight": params["grace_cdt_weight"]}
     alloc = conservative_allocation(free_cop, projected, params)
     cdt = {
         "principal_cop": alloc["cdt_cop"],

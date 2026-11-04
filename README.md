@@ -87,7 +87,8 @@ Print the conservative allocation (Plan 1) at t0:
 
 Plan 1 (fixed income only) keeps in the FIC the payments due before its new CDT matures (high inflation scenario; the
 CDT pays the payment of the month it matures), puts `conservative.cdt_weight` of the rest in a CDT that matures at the
-next review, and leaves the remainder in the FIC. Every
+next review, and leaves the remainder in the FIC; during the grace period everything goes to the CDT
+(`grace_cdt_weight`). Every
 parameter (t0, review frequency, CDT weight, inflation scenarios, data series) is read from
 `config/assumptions.yaml`. Plan 2 (CDT ladder) buys fixed-rate CDTs of 3, 6 and 12 months chosen with a linear
 program in UVR that covers every remaining payment and maximizes the final wealth; the decision uses expected real

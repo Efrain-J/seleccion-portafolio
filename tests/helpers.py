@@ -3,11 +3,12 @@
 import pandas as pd
 
 
-def make_cfg(cdt_weight=0.90, horizon=12, k=6, terms=None):
+def make_cfg(cdt_weight=0.90, horizon=12, k=6, terms=None, grace_months=0):
     return {
         "initial_capital_cop": 1_000.0,
+        "loan": {"grace_months": grace_months},
         "backtest": {"t0": "2020-01", "horizon_months": horizon, "review_every_months": k},
-        "conservative": {"cdt_weight": cdt_weight, "fic_sizing_scenario": "base"},
+        "conservative": {"cdt_weight": cdt_weight, "grace_cdt_weight": 1.0, "fic_sizing_scenario": "base"},
         "inflation_scenarios": {"base_lookback_months": 6, "high_shock_pp": 0.0, "low_shock_pp": 0.0},
         "cdt_ladder": {"deflator_scenario": "base", "term_columns": terms or {6: "cdt_180d_ea"}},
     }

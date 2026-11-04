@@ -37,6 +37,19 @@ def test_conservative_fic_reserves_payments_until_the_month_before_the_cdt_matur
     assert results["shortfall_cop"].sum() == 0
 
 
+def test_conservative_puts_everything_in_the_cdt_during_the_grace_period():
+    """Reviews before the first payment (tau < grace_months) use grace_cdt_weight = 1: no money waits in the FIC."""
+    cfg = make_cfg(grace_months=6)
+    results = run_backtest(make_panel(cfg), make_schedule({m: 10.0 for m in range(7, 13)}), cfg).set_index(
+        "month"
+    )
+    assert results.loc[0, "fic_cop"] == pytest.approx(0.0)
+    assert results.loc[0, "cdt_cop"] == pytest.approx(1_000.0)
+    assert results.loc[6, "fic_cop"] == pytest.approx(
+        50.0 + 0.10 * 950.0
+    )  # after the grace: L + 10 % of the rest
+
+
 def test_shortfall_is_recorded_when_uvr_rises_more_than_projected():
     cfg = make_cfg(cdt_weight=1.0)  # the FIC holds only the projected payments
     uvr = [1.0] * 7 + [2.0] * 6  # projected flat at the review of month 6, doubles in month 7

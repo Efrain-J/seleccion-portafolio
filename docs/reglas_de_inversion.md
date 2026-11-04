@@ -161,6 +161,10 @@ con la UVR proyectada al escenario **alto** (`conservative.fic_sizing_scenario`;
 | CDT | $w\,(W - L)$, con $w$ = 90 % hoy |
 | FIC | el resto: $L + (1 - w)(W - L)$ |
 
+**Durante la gracia** (revisiones con $\tau$ < 36, antes de la primera cuota) no hay pagos, así que no hace falta
+colchón: se usa $w$ = 100 % (`conservative.grace_cdt_weight`) y todo el dinero va al CDT. Desde la revisión de
+oct-2019 se vuelve al 90 %.
+
 Si los pagos proyectados superan el dinero libre ($L > W$), todo va al FIC; la parte que no alcanza solo se convierte
 en déficit $D_m$ si al llegar el pago el FIC no lo cubre.
 
@@ -178,15 +182,16 @@ FIC se ajusta a los pagos que vienen y el CDT vuelve a ser el 90 % del resto.
 
 | Revisión | $W$ | $L$ (pagos de los próximos 5 meses) | FIC | CDT |
 |---|---|---|---|---|
-| oct-2016 (gracia) | 760,0M | 0 | 76,0M | 684,0M |
-| oct-2019 (antes de la primera cuota) | 895,2M | 28,0M | 114,7M | 780,5M |
+| oct-2016 (gracia, $w$ = 100 %) | 760,0M | 0 | 0 | 760,0M |
+| oct-2019 (antes de la primera cuota, $w$ = 90 %) | 897,6M | 27,9M | 114,9M | 782,7M |
 
 ### Riesgo
 
 El 10 % que queda en el FIC además de $L$ funciona como colchón: el saldo mínimo del FIC en un mes de pago fue
-71,4M, y no hubo déficit. A cambio, ese dinero rinde lo del FIC y no lo del CDT. Con el 10 % en ETF (versión anterior
-del plan) la riqueza final fue 734,8M frente a 696,9M ahora: la diferencia viene sobre todo de 2025, cuando ICOLCAP
-subió 39 %, algo que no se sabía en 2016.
+71,8M, y no hubo déficit. A cambio, ese dinero rinde lo del FIC y no lo del CDT. Poner también ese 10 % en el CDT
+durante la gracia sube la riqueza final de 696,9M a 701,0M: entre oct-2016 y oct-2019 el CDT a 180 días rindió en
+promedio 5,51 % frente a 4,82 % del FIC. Con el 10 % en ETF (versión anterior del plan) la riqueza final fue 734,8M:
+la diferencia viene sobre todo de 2025, cuando ICOLCAP subió 39 %, algo que no se sabía en 2016.
 
 ### Simplificaciones propias del plan 1
 
@@ -196,8 +201,8 @@ subió 39 %, algo que no se sabía en 2016.
 ### Qué decide la regla y qué no
 
 - **Dónde invertir:** los tres instrumentos son fijos, elegidos de antemano. La regla no compara alternativas.
-- **Cuánto:** lo fijan solo los pagos próximos (FIC) y `cdt_weight` (CDT). El 90 % es una elección, no el resultado
-  de un cálculo.
+- **Cuánto:** lo fijan solo los pagos próximos (FIC), `cdt_weight` (CDT) y `grace_cdt_weight` (CDT durante la
+  gracia). El 90 % es una elección, no el resultado de un cálculo.
 
 ## Plan 2 – Escalera de CDT optimizada
 
