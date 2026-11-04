@@ -74,7 +74,9 @@ the month and used for decisions) or `_m` (realized during the month and used fo
 | `cdt_90d_ea` | BanRep SUAMECA, series 65 | DTF: 90-day CDT rate, weekly, effective annual |
 | `cdt_180d_ea` | BanRep SUAMECA, series 67 | CDT 180 days, weekly, effective annual |
 | `cdt_360d_ea` | BanRep SUAMECA, series 68 | CDT 360 days, weekly, effective annual |
-| `etf_price_cop` | Yahoo Finance, `ICOLCAP.CL` | iShares COLCAP, adjusted close in COP |
+| `trm_cop` | BanRep SUAMECA, series 1 | TRM, COP per USD, daily |
+| `icolcap_price_cop`, `icolcap_vol_ea` | Yahoo Finance, `ICOLCAP.CL` | iShares COLCAP, adjusted close in COP, and its annualized volatility over the last 36 months |
+| `cspx_price_cop`, `cspx_vol_ea` | Yahoo Finance, `CSPX.L` × TRM | iShares Core S&P 500 UCITS (Irish, accumulating), adjusted close in USD converted to COP, and its volatility |
 | `fic_index`, `fic_ret_m`, `fic_rate_ea` | Superfinanciera on datos.gov.co (`qhpu-8ixx`) | Index of the money market FICs (daily unit values, size-weighted): month-end level, return realized in the month, and that return annualized |
 
 Endpoints, units, assumptions and known issues of every source are in [`data/SOURCES.md`](data/SOURCES.md).
@@ -92,7 +94,10 @@ next review, and leaves the remainder in the FIC; during the grace period everyt
 parameter (t0, review frequency, CDT weight, inflation scenarios, data series) is read from
 `config/assumptions.yaml`. Plan 2 (CDT ladder) buys fixed-rate CDTs of 3, 6 and 12 months chosen with a linear
 program in UVR that covers every remaining payment and maximizes the final wealth; the decision uses expected real
-returns, and the results use the observed CDT rates. Every reported peso comes from observed data. The base inflation of the
+returns, and the results use the observed CDT rates. Plan 3 (LDI) computes a floor, the smallest budget of that same
+LP that covers every remaining payment under high inflation, gives the CDT ladder 1.05 × floor and puts the rest in
+ICOLCAP and CSPX, split by inverse volatility (CPPI with multiplier 1: a fall of the ETFs never reaches the money for
+the payments). Every reported peso comes from observed data. The base inflation of the
 scenarios is the UVR inflation of the last `base_lookback_months` months known at each review. The full rules, with
 notation, examples and simplifications, are in [`docs/reglas_de_inversion.md`](docs/reglas_de_inversion.md).
 
@@ -103,9 +108,12 @@ Run the dynamic backtest of every plan from t0 to the end of the horizon (review
 ```
 
 It writes `results/backtest_<plan>.csv` for each plan (one row per month: `uvr_cop`, `payment_cop`, `shortfall_cop`,
-`etf_sold_cop`, `fic_cop`, `cdt_cop`, `etf_cop`, `wealth_cop`, `is_review`, `wealth_net_cop`) and `results/summary.csv`
-with one column per plan (months with shortfall, total shortfall, minimum liquidity (FIC + ETF) in a payment month,
-ETF sold to pay, final wealth, final net wealth, annualized time-weighted return and volatility, maximum drawdown). The
+`etf_sold_cop`, `fic_cop`, `cdt_cop`, `etf_cop` (all ETFs) and `<name>_cop` (each ETF), `wealth_cop`, `is_review`,
+`floor_cop` and `funding_ratio_total` (plan 3, at reviews: (free money + live CDTs) / (floor + live CDTs)),
+`wealth_net_cop`) and `results/summary.csv` with one column per plan (months with shortfall, total shortfall, minimum
+liquidity (FIC + ETF) in a payment month, ETF sold to pay, final wealth, final net wealth, annualized time-weighted
+return and volatility, maximum drawdown). When
+several ETFs must cover a payment, each one is sold in proportion to its value. The
 net wealth deducts the accumulated shortfall, since an unpaid payment is still owed; compare plans with it. Liquidity is
 FIC + ETF: a payment is
 taken from the FIC first and then from ETF units sold at that month's price; only what both cannot cover is recorded
@@ -126,7 +134,7 @@ Current structure. Planned additions (diagnosis, stress tests, report figures) a
 │   └── reglas_de_inversion.md  # Investment rules of each plan
 ├── data/
 │   ├── SOURCES.md            # Where every series comes from (versioned)
-│   ├── raw/                  # Download cache (UVR, CDT rates, ICOLCAP, FIC reports)
+│   ├── raw/                  # Download cache (UVR, CDT rates, TRM, ETFs, FIC reports)
 │   └── processed/            # monthly_panel.csv and payment_schedule_uvr.csv
 ├── notebooks/
 │   └── backtest_plans.ipynb  # Wealth, liquidity and UVR charts of every plan
@@ -139,7 +147,7 @@ Current structure. Planned additions (diagnosis, stress tests, report figures) a
 │   │   └── cleaning.py       # Builds the monthly data panel
 │   ├── inflation.py          # Base inflation (last 6 months of the UVR), scenarios and projected UVR
 │   ├── cashflows.py          # Review months and loan payments converted from UVR to COP
-│   ├── portfolio.py          # Plan 1 rule (conservative_allocation) and plan 2 LP (ladder_purchases)
+│   ├── portfolio.py          # Plan 1 rule, plan 2 LP (ladder_purchases), plan 3 floor and ETF weights
 │   └── backtest.py           # Monthly simulation of every plan (PLANS) and summary metrics
 ├── results/                  # Backtest outputs (CSV)
 └── tests/                    # pytest suite

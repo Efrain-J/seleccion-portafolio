@@ -12,10 +12,20 @@ import pandas as pd
 from uvr_loan.config import ROOT, load_assumptions
 
 OUTPUT_PATH = ROOT / "data" / "processed" / "payment_schedule_uvr.csv"
+NEGATIVE_BALANCE_TOLERANCE_UVR = 1e-6  # rounding of the last installment, not a real negative balance
 
 
 def monthly_rate(annual_rate: float) -> float:
     return (1 + annual_rate) ** (1 / 12) - 1
+
+
+def _check_loan(term: int, grace: int, prepayments: dict[int, float]) -> None:
+    """Raise ValueError if the grace period or a prepayment month does not fit in the term."""
+    if not 0 <= grace < term:
+        raise ValueError(f"The grace period must satisfy 0 <= grace < term, got grace={grace}, term={term}")
+    outside = [m for m in prepayments if not 1 <= m <= term]
+    if outside:
+        raise ValueError(f"Prepayments must fall in months 1..{term}, got months {outside}")
 
 
 def installment(
@@ -30,6 +40,7 @@ def installment(
     Balance capitalized at the end of the grace period, minus the present value
     of the prepayments, spread as an annuity over the remaining months.
     """
+    _check_loan(term, grace, prepayments)
     i = monthly_rate(annual_rate)
     n = term - grace
     balance_grace = principal * (1 + i) ** grace
@@ -38,7 +49,11 @@ def installment(
 
 
 def schedule(loan: dict[str, Any]) -> pd.DataFrame:
-    """Month-by-month table (months 1..term) from the `loan` section of the config."""
+    """Month-by-month table (months 1..term) from the `loan` section of the config.
+
+    Raises ValueError for a loan that does not fit in its term or whose balance becomes negative
+    (a prepayment larger than the balance).
+    """
     principal = loan["principal_uvr"]
     rate = loan["annual_rate"]
     term = loan["term_months"]
@@ -60,6 +75,9 @@ def schedule(loan: dict[str, Any]) -> pd.DataFrame:
         balance = balance + interest[t] - installments[t] - prepays[t]
         closing[t] = balance
 
+    if closing.min() < -NEGATIVE_BALANCE_TOLERANCE_UVR:
+        month = int(months[closing.argmin()])
+        raise ValueError(f"The balance becomes negative ({closing.min():,.2f} UVR in month {month})")
     return pd.DataFrame(
         {
             "month": months,

@@ -1,7 +1,14 @@
+import math
+
 import pandas as pd
 import pytest
 
-from uvr_loan.portfolio import conservative_allocation, ladder_purchases
+from uvr_loan.portfolio import (
+    conservative_allocation,
+    inverse_volatility_weights,
+    ladder_floor,
+    ladder_purchases,
+)
 
 PARAMS = {"cdt_weight": 0.90}
 
@@ -146,3 +153,61 @@ def test_ladder_solver_failure_other_than_infeasible_is_not_hidden(monkeypatch):
     monkeypatch.setattr(portfolio, "linprog", lambda *a, **k: SimpleNamespace(status=4, message="numerical"))
     with pytest.raises(RuntimeError, match="numerical"):
         ladder_purchases(0, 100.0, {}, lp_schedule({12: 50.0}), LP_CFG, {12: 0.0})
+
+
+# Plan 3: the floor is the smallest budget of the same LP, and the ETFs are split by inverse volatility.
+
+
+def test_floor_with_zero_real_rates_is_the_sum_of_the_payments():
+    floor = ladder_floor(0, {}, lp_schedule({7: 30.0, 12: 70.0}), LP_CFG, {6: 0.0, 12: 0.0})
+    assert floor == pytest.approx(100.0)
+
+
+def test_floor_discounts_the_payments_at_the_real_rate():
+    floor = ladder_floor(0, {}, lp_schedule({12: 102.0}), LP_CFG, {12: 0.02})
+    assert floor == pytest.approx(100.0)
+
+
+def test_the_floor_is_the_smallest_budget_the_ladder_accepts():
+    args = ({}, lp_schedule({7: 30.0, 12: 70.0}), LP_CFG, {6: 0.01, 12: 0.03})
+    floor = ladder_floor(0, *args, fic_real_ea=-0.02)
+    ladder_purchases(0, floor * (1 + 1e-9), *args, fic_real_ea=-0.02)
+    with pytest.raises(ValueError):
+        ladder_purchases(0, floor * 0.999, *args, fic_real_ea=-0.02)
+
+
+def test_live_cdts_lower_the_floor_and_it_is_never_negative():
+    payments = lp_schedule({12: 100.0})
+    assert ladder_floor(0, {12: 40.0}, payments, LP_CFG, {12: 0.0}) == pytest.approx(60.0)
+    covered = ladder_floor(0, {12: 500.0}, payments, LP_CFG, {12: 0.0})
+    assert covered == 0.0
+    assert not math.copysign(1.0, covered) < 0  # not -0.0
+
+
+@pytest.mark.parametrize(
+    "vols,expected",
+    [
+        ({"a": 0.2, "b": 0.2}, {"a": 0.5, "b": 0.5}),
+        ({"a": 0.1, "b": 0.3}, {"a": 0.75, "b": 0.25}),
+    ],
+    ids=["equal-volatilities", "lower-volatility-weighs-more"],
+)
+def test_inverse_volatility_weights(vols, expected):
+    assert inverse_volatility_weights(vols) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "vols,message",
+    [
+        ({}, "no growth assets"),
+        ({"a": 0.2, "b": math.nan}, "b"),
+        ({"a": 0.0, "b": 0.2}, "a"),
+        ({"a": -0.1, "b": 0.2}, "a"),
+        ({"a": 0.2, "b": math.inf}, "b"),
+    ],
+    ids=["empty", "nan", "zero", "negative", "infinite"],
+)
+def test_inverse_volatility_weights_reject_invalid_input(vols, message):
+    """Without this check, an empty list loses the money and a bad volatility turns every value into NaN."""
+    with pytest.raises(ValueError, match=message):
+        inverse_volatility_weights(vols)

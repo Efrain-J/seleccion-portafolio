@@ -1,9 +1,10 @@
+import numpy as np
 import pandas as pd
 import pytest
 from helpers import make_cfg, make_panel, make_schedule
 
 from uvr_loan import backtest
-from uvr_loan.backtest import PLANS, run_backtest, summary
+from uvr_loan.backtest import PLANS, Allocation, run_backtest, summary
 
 
 def test_no_payments_and_zero_rates_keep_wealth():
@@ -69,7 +70,7 @@ def test_etf_follows_its_price(monkeypatch):
     """The engine still supports an ETF (for future plans): a plan that puts everything in it."""
 
     def all_in_etf(tau, history, free_cop, lots, payment_schedule, cfg):
-        return 0.0, free_cop, []
+        return Allocation(0.0, {"icolcap": free_cop}, [])
 
     monkeypatch.setitem(PLANS, "all_in_etf", all_in_etf)
     cfg = make_cfg()
@@ -85,7 +86,7 @@ def run_split(monkeypatch, fic_share, payments, etf=100.0):
     """A plan that keeps `fic_share` of the free money in the FIC and the rest in the ETF."""
 
     def split(tau, history, free_cop, lots, payment_schedule, cfg):
-        return fic_share * free_cop, (1 - fic_share) * free_cop, []
+        return Allocation(fic_share * free_cop, {"icolcap": (1 - fic_share) * free_cop}, [])
 
     monkeypatch.setitem(PLANS, "split", split)
     cfg = make_cfg()
@@ -229,7 +230,7 @@ def test_strategies_only_see_data_up_to_the_review(monkeypatch):
 
     def spy(tau, history, free, lots, payment_schedule, cfg):
         seen.append((tau, history.index[-1]))
-        return free, 0.0, []
+        return Allocation(free, {}, [])
 
     monkeypatch.setitem(PLANS, "spy", spy)
     cfg = make_cfg()
@@ -247,3 +248,141 @@ def test_net_wealth_deducts_the_accumulated_shortfall():
     assert results.loc[12, "wealth_net_cop"] == pytest.approx(results.loc[12, "wealth_cop"] - 100.0)
     s = summary(results.reset_index())
     assert s["final_wealth_net_cop"] == pytest.approx(s["final_wealth_cop"] - 100.0)
+
+
+# Plan 3 (LDI): the ladder gets 1.05 x floor and the ETFs the rest, split by inverse volatility.
+
+
+def run_ldi(cfg, payments, **panel):
+    return run_backtest(make_panel(cfg, **panel), make_schedule(payments), cfg, "ldi").set_index("month")
+
+
+def test_ldi_puts_the_money_above_the_floor_in_the_etfs():
+    """Zero rates: the floor is the payment (100), the ladder gets 105 and the ETFs the other 895."""
+    results = run_ldi(make_cfg(), {7: 100.0})
+    assert results.loc[0, "floor_cop"] == pytest.approx(100.0)
+    assert results.loc[0, "funding_ratio_total"] == pytest.approx(10.0)  # no live CDTs yet
+    assert results.loc[0, "etf_cop"] == pytest.approx(895.0)
+    assert results.loc[0, "icolcap_cop"] == pytest.approx(447.5)  # equal volatilities: half each
+    assert results.loc[0, "cdt_cop"] + results.loc[0, "fic_cop"] == pytest.approx(105.0)
+
+
+def test_ldi_splits_the_etfs_by_inverse_volatility():
+    results = run_ldi(make_cfg(), {7: 100.0}, icolcap_vol=0.1, cspx_vol=0.3)
+    assert results.loc[0, "icolcap_cop"] == pytest.approx(0.75 * 895.0)
+    assert results.loc[0, "cspx_cop"] == pytest.approx(0.25 * 895.0)
+
+
+def test_ldi_buys_no_etf_when_the_money_is_below_the_buffered_floor():
+    cfg = {**make_cfg(), "initial_capital_cop": 102.0}  # floor 100 < 102 < 105
+    results = run_ldi(cfg, {7: 100.0})
+    assert results.loc[0, "etf_cop"] == 0
+    assert results["shortfall_cop"].sum() == 0
+
+
+def test_ldi_below_the_floor_keeps_the_money_in_the_fic():
+    cfg = {**make_cfg(), "initial_capital_cop": 50.0}
+    results = run_ldi(cfg, {7: 100.0})
+    assert results.loc[0, "fic_cop"] == pytest.approx(50.0)
+    assert results.loc[0, "etf_cop"] == 0
+    assert results.loc[7, "shortfall_cop"] == pytest.approx(50.0)
+
+
+def test_a_crash_of_the_etfs_does_not_reach_the_payments():
+    """m = 1: the ETFs lose 99 % after month 0, and the ladder still pays everything."""
+    crash = [100.0] + [1.0] * 12
+    results = run_ldi(make_cfg(), {7: 100.0, 12: 100.0}, etf=crash, cspx=crash)
+    assert results["shortfall_cop"].sum() == 0
+    assert results["etf_sold_cop"].sum() == 0
+
+
+def test_etfs_are_sold_pro_rata(monkeypatch):
+    def two_etfs(tau, history, free_cop, lots, payment_schedule, cfg):
+        return Allocation(0.0, {"icolcap": 0.6 * free_cop, "cspx": 0.4 * free_cop}, [])
+
+    monkeypatch.setitem(PLANS, "two_etfs", two_etfs)
+    cfg = make_cfg()
+    results = run_backtest(make_panel(cfg), make_schedule({3: 100.0}), cfg, "two_etfs").set_index("month")
+    assert results.loc[3, "etf_sold_cop"] == pytest.approx(100.0)
+    assert results.loc[3, "icolcap_cop"] == pytest.approx(600.0 - 60.0)
+    assert results.loc[3, "cspx_cop"] == pytest.approx(400.0 - 40.0)
+
+
+def test_plans_without_a_floor_record_no_funding_ratio():
+    results = run_backtest(make_panel(make_cfg()), make_schedule({}), make_cfg())
+    assert results["floor_cop"].isna().all()
+    assert results["funding_ratio_total"].isna().all()
+
+
+def test_total_funding_ratio_counts_the_live_cdts_on_both_sides():
+    """At the review of month 6 the 12-month CDT bought in month 0 covers the payment, so the floor of the
+    free money is 0; the total ratio stays finite: (free money + live CDT) / (0 + live CDT)."""
+    cfg = make_cfg(terms={12: "cdt_360d_ea"})
+    results = run_ldi(cfg, {12: 100.0}, cdt_360=0.10)  # floor in month 0: 100 / 1.10
+    live = 1.05 * 100.0 / 1.10 * 1.10 ** (6 / 12)
+    assert results.loc[6, "floor_cop"] == 0.0
+    assert results.loc[6, "cdt_cop"] == pytest.approx(live)  # nothing new is bought
+    assert results.loc[6, "funding_ratio_total"] == pytest.approx(results.loc[6, "wealth_cop"] / live)
+
+
+def test_total_funding_ratio():
+    assert backtest.total_funding_ratio(300.0, 100.0, 100.0) == pytest.approx(2.0)
+    assert backtest.total_funding_ratio(300.0, 0.0, 0.0) == float("inf")  # nothing left to pay
+    assert np.isnan(backtest.total_funding_ratio(300.0, 100.0, float("nan")))  # plan without a floor
+
+
+def test_ldi_without_growth_assets_raises_instead_of_losing_the_money():
+    cfg = make_cfg()
+    cfg["ldi"] = {**cfg["ldi"], "growth_assets": []}
+    with pytest.raises(ValueError, match="no growth assets"):
+        run_ldi(cfg, {7: 100.0})
+
+
+def test_ldi_with_a_missing_volatility_raises_instead_of_returning_nan():
+    with pytest.raises(ValueError, match="icolcap"):
+        run_ldi(make_cfg(), {7: 100.0}, icolcap_vol=float("nan"))
+
+
+def test_only_the_etfs_of_the_config_are_tracked():
+    """An extra `<name>_price_cop` column in the panel is not an ETF unless it is in `data.etfs`."""
+    cfg = make_cfg()
+    panel = make_panel(cfg)
+    panel["tes_price_cop"] = 100.0
+    results = run_backtest(panel, make_schedule({}), cfg, "ldi")
+    assert "tes_cop" not in results.columns
+    assert {"icolcap_cop", "cspx_cop"} <= set(results.columns)
+
+
+def test_max_drawdown_counts_a_fall_in_the_first_month():
+    """The growth series starts at 1 in month 0, so a fall in month 1 is a drawdown."""
+    wealth = [100.0, 95.0, 99.75]
+    results = pd.DataFrame(
+        {
+            "payment_cop": 0.0,
+            "shortfall_cop": 0.0,
+            "etf_sold_cop": 0.0,
+            "fic_cop": wealth,
+            "etf_cop": 0.0,
+            "wealth_cop": wealth,
+            "wealth_net_cop": wealth,
+        }
+    )
+    assert summary(results)["max_drawdown"] == pytest.approx(0.05)
+
+
+@pytest.mark.parametrize(
+    "spoil,message",
+    [
+        (lambda p: p.assign(fic_rate_ea=p["fic_rate_ea"].where(p.index != p.index[-3])), "fic_rate_ea"),
+        (
+            lambda p: p.assign(icolcap_price_cop=p["icolcap_price_cop"].where(p.index != p.index[-3], 0.0)),
+            "icolcap",
+        ),
+        (lambda p: p.drop(p.index[-3]), "2020-11"),
+    ],
+    ids=["nan-after-t0", "zero-etf-price", "missing-month"],
+)
+def test_run_backtest_rejects_a_bad_panel(spoil, message):
+    cfg = make_cfg()
+    with pytest.raises(ValueError, match=message):
+        run_backtest(spoil(make_panel(cfg)), make_schedule({}), cfg, "ldi")

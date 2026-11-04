@@ -1,10 +1,17 @@
 from unittest.mock import Mock
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from uvr_loan.data import sources
-from uvr_loan.data.cleaning import build_fic_index, build_monthly_panel, fic_returns, to_month_end
+from uvr_loan.data.cleaning import (
+    build_fic_index,
+    build_monthly_panel,
+    etf_columns,
+    fic_returns,
+    to_month_end,
+)
 from uvr_loan.data.sources import (
     cached,
     cached_table,
@@ -185,3 +192,67 @@ def test_download_money_market_fic_has_funds_in_t0():
     table = fetch_money_market_fic("qhpu-8ixx", "FIC DE MERCADO MONETARIO", "2016-10-31", "2016-10-31")
     assert len(table) >= 10
     assert (table["valor_unidad_operaciones"] > 0).all()
+
+
+def test_etf_columns_convert_usd_with_the_trm_of_the_same_month_and_use_past_volatility():
+    days = pd.to_datetime(["2020-01-15", "2020-01-31", "2020-02-28", "2020-03-31"])
+    usd = pd.Series([9.0, 10.0, 11.0, 9.9], days)
+    trm = pd.Series([3_000.0, 4_000.0, 4_000.0, 5_000.0], days)
+    cols = etf_columns(
+        {"cspx": usd, "icolcap": usd * 1_000}, {"cspx": "USD", "icolcap": "COP"}, trm, window=2
+    )
+    assert list(cols["cspx_price_cop"]) == pytest.approx([40_000.0, 44_000.0, 49_500.0])
+    assert list(cols["icolcap_price_cop"]) == pytest.approx([10_000.0, 11_000.0, 9_900.0])
+    returns = pd.Series([0.10, 0.125])  # COP returns of cspx in February and March
+    assert cols["cspx_vol_ea"].iloc[-1] == pytest.approx(returns.std() * 12**0.5)
+    assert cols["cspx_vol_ea"].iloc[:2].isna().all()  # needs `window` returns
+
+
+def test_etf_columns_reject_an_unknown_currency():
+    s = pd.Series([1.0], pd.to_datetime(["2020-01-31"]))
+    with pytest.raises(ValueError, match="EUR"):
+        etf_columns({"x": s}, {"x": "EUR"}, s, window=2)
+
+
+def test_etf_cache_file_includes_the_start_date(monkeypatch, tmp_path):
+    """A cache downloaded with another start date must not be reused, so the start is in the file name."""
+    calls = []
+
+    def fake_fetch(ticker, start, end):
+        calls.append((ticker, start, end))
+        return pd.Series([1.0, 2.0], pd.to_datetime(["2013-01-02", "2013-01-03"]), name="value")
+
+    monkeypatch.setattr(sources, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(sources, "fetch_yahoo_close", fake_fetch)
+    cfg = {
+        "data": {
+            "etf_history_start": "2013-01-01",
+            "end": "2026-11-30",
+            "etfs": {"cspx": {"ticker": "CSPX.L", "currency": "USD"}},
+        }
+    }
+    prices = sources.load_etf_prices(cfg)
+    assert (tmp_path / "yahoo_CSPX.L_2013-01-01.csv").exists()
+    assert calls == [("CSPX.L", "2013-01-01", "2026-11-30")]
+    assert list(prices["cspx"]) == [1.0, 2.0]
+
+
+def test_etf_columns_only_use_data_up_to_each_month():
+    """Changing prices and TRM after a cut must not change the price or volatility of any month up to the cut."""
+    days = pd.date_range("2013-01-31", periods=60, freq="ME")
+    rng = np.random.default_rng(0)
+    usd = pd.Series(100 * np.cumprod(1 + rng.normal(0, 0.04, 60)), days)
+    trm = pd.Series(3_000 * np.cumprod(1 + rng.normal(0, 0.02, 60)), days)
+    cut = days[40]
+    later = days > cut
+    usd_bad, trm_bad = usd.copy(), trm.copy()
+    usd_bad[later] *= 5.0
+    trm_bad[later] *= 0.2
+
+    def build(price, rate):
+        return etf_columns({"cspx": price}, {"cspx": "USD"}, rate, window=12)
+
+    base, bad = build(usd, trm), build(usd_bad, trm_bad)
+    month = cut.to_period("M")
+    pd.testing.assert_frame_equal(base.loc[:month], bad.loc[:month], check_exact=True)
+    assert not base.loc[month + 1 :].equals(bad.loc[month + 1 :])
