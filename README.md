@@ -102,9 +102,11 @@ Run the dynamic backtest of every plan from t0 to the end of the horizon (review
 ```
 
 It writes `results/backtest_<plan>.csv` for each plan (one row per month: `uvr_cop`, `payment_cop`, `shortfall_cop`,
-`etf_sold_cop`, `fic_cop`, `cdt_cop`, `etf_cop`, `wealth_cop`, `is_review`) and `results/summary.csv` with one column
-per plan (months with shortfall, total shortfall, minimum liquidity (FIC + ETF) in a payment month, ETF sold to pay,
-final wealth, annualized time-weighted return and volatility, maximum drawdown). Liquidity is FIC + ETF: a payment is
+`etf_sold_cop`, `fic_cop`, `cdt_cop`, `etf_cop`, `wealth_cop`, `is_review`, `wealth_net_cop`) and `results/summary.csv`
+with one column per plan (months with shortfall, total shortfall, minimum liquidity (FIC + ETF) in a payment month,
+ETF sold to pay, final wealth, final net wealth, annualized time-weighted return and volatility, maximum drawdown). The
+net wealth deducts the accumulated shortfall, since an unpaid payment is still owed; compare plans with it. Liquidity is
+FIC + ETF: a payment is
 taken from the FIC first and then from ETF units sold at that month's price; only what both cannot cover is recorded
 as shortfall. CDTs are never redeemed early.
 

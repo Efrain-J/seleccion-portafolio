@@ -80,6 +80,18 @@ Weighted average rate of 90-day CDTs. It is the rate of the 3-month CDTs of plan
 
 ## Known issues
 
+- **ICOLCAP, Dec-2025:** the month-end close (2025-12-30) is 20,000, −4.7 % from the day before, with the day's low
+  equal to the close; the price recovers to 20,480 and 20,994 in the next sessions. It may be a bad print, which would
+  understate Dec-2025 and overstate Jan-2026. It could not be confirmed with a second source. No current plan holds
+  the ETF.
+- **ICOLCAP, adjusted close:** Yahoo's adjusted close is rescaled back in time with every new dividend (the factor was
+  0.658 in Oct-2016 at download time). Returns are consistent, but price levels change if the data is downloaded again;
+  the cache in `data/raw/` keeps the results reproducible.
+- **ICOLCAP, 2024–2025:** Yahoo has no volume for many days (149 in 2024, 229 in 2025), but the prices are not stale:
+  they change from day to day with real open/high/low values.
+- **Timing:** the weekly CDT rates are dated on Fridays, so the month-end value is the last Friday of the month (up to
+  6 days before the close). FIC unit values are published about one day after their date.
+
 - The BanRep server does not send its intermediate certificate, so Python's default certificate bundle fails with
   `CERTIFICATE_VERIFY_FAILED`. The download uses `truststore` (the operating system's certificate store), without
   turning off verification.

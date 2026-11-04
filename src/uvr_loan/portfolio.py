@@ -38,6 +38,17 @@ def conservative_allocation(
     return {"fic_cop": free_cop - cdt, "cdt_cop": cdt, "uncovered_cop": needed - liquidity}
 
 
+def _solve(objective, a_eq, b_eq, tau, a_ub=None, b_ub=None):
+    """Solve the ladder LP. Infeasible (status 2) raises ValueError: no ladder covers the payments.
+    Any other solver failure raises RuntimeError, so it is not mistaken for an infeasible review."""
+    result = linprog(objective, A_ub=a_ub, b_ub=b_ub, A_eq=a_eq, b_eq=b_eq, bounds=(0, None), method="highs")
+    if result.status == 2:
+        raise ValueError(f"No ladder covers the payments at month {tau}: {result.message}")
+    if result.status != 0:
+        raise RuntimeError(f"Ladder LP failed at month {tau}: {result.message}")
+    return result
+
+
 def ladder_purchases(
     tau: int,
     budget_uvr: float,
@@ -55,7 +66,8 @@ def ladder_purchases(
     Variables: purchases y[s, j] at the reviews s = tau, tau + k, ... (only if s + j <= H) and the
     cash c[m] at the close of each month m = tau .. H. Month balance (S12: maturities pay the
     same month): c[m] = c[m-1] * (1 + fic_real_ea)^(1/12) + matured CDTs + maturities_uvr[m]
-    - y[m, :] - payment[m] >= 0. The objective maximizes c[H].
+    - y[m, :] - payment[m] >= 0. The objective maximizes c[H]; ties are broken toward the
+    shortest terms (second stage).
     """
     horizon, k = cfg["backtest"]["horizon_months"], cfg["backtest"]["review_every_months"]
     payments = payment_schedule.set_index("month")["total_payment_uvr"]
@@ -78,11 +90,21 @@ def ladder_purchases(
             if s + j == m:
                 a_eq[row, col] -= (1 + cdt_real_ea[j]) ** (j / 12)
 
+    # Stage 1: the maximum final cash c[H].
     objective = np.zeros(n_lots + len(months))
-    objective[-1] = -1.0  # maximize c[H]
-    result = linprog(objective, A_eq=a_eq, b_eq=b_eq, bounds=(0, None), method="highs")
-    if result.status != 0:
-        raise ValueError(f"No ladder covers the payments at month {tau}: {result.message}")
+    objective[-1] = -1.0
+    result = _solve(objective, a_eq, b_eq, tau)
+
+    # Stage 2 (tie-break): among the solutions that reach that c[H], today's purchases with the
+    # shortest terms (minimum sum of amount x term over y[tau, :]; future purchases are decided
+    # again at each review), so the executed purchase does not depend on the solver.
+    best = result.x[-1]
+    floor = np.zeros(n_lots + len(months))
+    floor[-1] = -1.0  # -c[H] <= -(best - tolerance)
+    shortest = np.zeros(n_lots + len(months))
+    shortest[:n_lots] = [j if s == tau else 0.0 for s, j in lots]
+    tolerance = 1e-9 * max(1.0, abs(best))
+    result = _solve(shortest, a_eq, b_eq, tau, a_ub=floor[None, :], b_ub=[-(best - tolerance)])
 
     buy = dict.fromkeys(cdt_real_ea, 0.0)
     for col, (s, j) in enumerate(lots):

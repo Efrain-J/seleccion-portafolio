@@ -164,7 +164,10 @@ def run_backtest(
                 "is_review": m in reviews,
             }
         )
-    return pd.DataFrame(rows)
+    results = pd.DataFrame(rows)
+    # An unpaid payment is still owed: the net wealth deducts every shortfall so far.
+    results["wealth_net_cop"] = results["wealth_cop"] - results["shortfall_cop"].cumsum()
+    return results
 
 
 def summary(results: pd.DataFrame) -> dict[str, float]:
@@ -180,6 +183,7 @@ def summary(results: pd.DataFrame) -> dict[str, float]:
         ].min(),
         "total_etf_sold_cop": results["etf_sold_cop"].sum(),
         "final_wealth_cop": results["wealth_cop"].iloc[-1],
+        "final_wealth_net_cop": results["wealth_net_cop"].iloc[-1],
         "annual_return": growth.iloc[-1] ** (12 / len(monthly)) - 1,
         "annual_volatility": monthly.std() * np.sqrt(12),
         "max_drawdown": (1 - growth / growth.cummax()).max(),

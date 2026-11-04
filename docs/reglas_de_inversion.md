@@ -40,6 +40,7 @@ $\tau$ es un dato conocido al cierre del mes $\tau$. El orden dentro de un mes e
 | $E_m$ | Valor del ETF al cierre del mes $m$, a precio de mercado | COP | columna `etf_cop` |
 | — | **Liquidez:** FIC + ETF ($F_m + E_m$); los CDT no son liquidez hasta que vencen | COP | métrica `min_liquid_at_payment_cop` |
 | $D_m$ | Déficit del mes $m$: parte del pago que no cubren ni el FIC ni el ETF | COP | columna `shortfall_cop` |
+| — | **Riqueza neta:** riqueza menos el déficit acumulado, $F_m + \text{CDT}_m + E_m - \sum_{m' \le m} D_{m'}$ (un pago sin cubrir sigue debiéndose) | COP | columna `wealth_net_cop` |
 
 **Escenarios de inflación.** En cada $\tau$ hay tres: base $=\pi^{\text{base}}_\tau$, alto
 $=\pi^{\text{base}}_\tau + 0{,}03$ y bajo $=\pi^{\text{base}}_\tau - 0{,}015$. El plan 1 usa el alto para dimensionar el
@@ -237,11 +238,17 @@ $$
 
    Por S12, lo que vence en $m$ sirve para $P_m$.
 
-4. **Ejecución:** solo se compran los $y_{\tau,j}$ de hoy, convertidos a COP con $\text{UVR}_\tau$; $c_\tau$ queda en
+4. **Desempate:** el LP suele tener varias soluciones con el mismo $c_H$ (sobre todo en la gracia, donde dos CDT a 6
+   meses seguidos rinden casi lo mismo que uno a 12). Por eso se resuelve en dos etapas: primero el máximo $c_H$, y
+   después, entre las soluciones que lo alcanzan (con tolerancia relativa $10^{-9}$), la que minimiza
+   $\sum_j j\,y_{\tau,j}$, es decir, la compra de hoy con los plazos más cortos. Así la compra no depende del método
+   del solver.
+5. **Ejecución:** solo se compran los $y_{\tau,j}$ de hoy, convertidos a COP con $\text{UVR}_\tau$; $c_\tau$ queda en
    el FIC. Cada CDT rinde después su tasa observada $r_j(\tau)$. En la siguiente revisión se vuelve a resolver con los
    CDT vivos como $M_m$.
-5. **Sin escalera posible:** si con la inflación esperada el dinero libre no alcanza para todos los pagos, no se
-   compra nada, todo queda en el FIC y los déficits se registran (S9).
+6. **Sin escalera posible:** si el LP no tiene solución (con la inflación esperada, el dinero libre no alcanza para
+   todos los pagos), no se compra nada, todo queda en el FIC y los déficits se registran (S9). Cualquier otra falla del
+   solver detiene el backtest con un error, para que no se confunda con este caso.
 
 ### Ejemplos (backtest con datos reales)
 
@@ -258,7 +265,8 @@ vivos.
 
 Los CDT son de tasa fija: si la inflación supera la esperada, los pagos en COP crecen más que el dinero. Con la
 inflación base, el backtest tiene 9 meses con déficit (1,18M COP en total); el mayor es sep-2026 (0,70M). En
-abr-2026 no hubo escalera posible y el dinero quedó en el FIC.
+abr-2026 no hubo escalera posible y el dinero quedó en el FIC. La riqueza final es 782,3M; descontando los pagos que
+quedaron sin cubrir, la riqueza neta es 781,1M.
 
 ### Simplificaciones propias del plan 2
 

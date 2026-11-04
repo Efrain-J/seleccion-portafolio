@@ -109,3 +109,40 @@ def test_cash_losing_real_value_needs_a_bigger_budget():
     with pytest.raises(ValueError):
         ladder_purchases(0, 10.0, {}, payment, LP_CFG, {6: 0.0}, fic_real_ea=-0.12)
     ladder_purchases(0, 10.0 / 0.88 ** (1 / 12), {}, payment, LP_CFG, {6: 0.0}, fic_real_ea=-0.12)
+
+
+# Tie-break and solver status.
+
+
+def test_ladder_breaks_ties_toward_the_shorter_term():
+    """Same real rate for 6 and 12 months: two 6-month CDTs equal one 12-month CDT, so the shorter term is chosen."""
+    buy = ladder_purchases(0, 100.0, {}, lp_schedule({}), LP_CFG, {6: 0.02, 12: 0.02})
+    assert buy[6] == pytest.approx(100.0)
+    assert buy[12] == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize("method", ["highs-ds", "highs-ipm"])
+def test_ladder_purchases_do_not_depend_on_the_solver_method(monkeypatch, method):
+    """With the tie-break the purchase is unique: forcing another HiGHS method gives the same result."""
+    from scipy.optimize import linprog
+
+    from uvr_loan import portfolio
+
+    def other_method(*args, **kwargs):
+        return linprog(*args, **{**kwargs, "method": method})
+
+    reference = ladder_purchases(0, 100.0, {}, lp_schedule({}), LP_CFG, {6: 0.02, 12: 0.02})
+    monkeypatch.setattr(portfolio, "linprog", other_method)
+    result = ladder_purchases(0, 100.0, {}, lp_schedule({}), LP_CFG, {6: 0.02, 12: 0.02})
+    assert result == pytest.approx(reference, abs=1e-6)
+
+
+def test_ladder_solver_failure_other_than_infeasible_is_not_hidden(monkeypatch):
+    """Only an infeasible LP (status 2) means "no ladder"; other solver failures must raise RuntimeError."""
+    from types import SimpleNamespace
+
+    from uvr_loan import portfolio
+
+    monkeypatch.setattr(portfolio, "linprog", lambda *a, **k: SimpleNamespace(status=4, message="numerical"))
+    with pytest.raises(RuntimeError, match="numerical"):
+        ladder_purchases(0, 100.0, {}, lp_schedule({12: 50.0}), LP_CFG, {12: 0.0})
