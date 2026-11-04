@@ -71,7 +71,7 @@ def schedule():
 def same_until(panel, scrambled, schedule, cfg, plan, cut):
     base = run_backtest(panel, schedule, cfg, plan)
     other = run_backtest(scrambled, schedule, cfg, plan)
-    pd.testing.assert_frame_equal(base[base["month"] <= cut], other[other["month"] <= cut], rtol=1e-9)
+    pd.testing.assert_frame_equal(base[base["month"] <= cut], other[other["month"] <= cut], check_exact=True)
     assert not base[base["month"] > cut].equals(
         other[other["month"] > cut]
     )  # the garbage does have an effect
@@ -84,18 +84,33 @@ def test_no_lookahead(cfg, schedule, plan, cut):
     same_until(panel, scramble_after(panel, cfg, cut), schedule, cfg, plan, cut)
 
 
-def test_the_lookahead_test_catches_a_leak(monkeypatch, cfg, schedule):
-    """A plan that peeks at next month's UVR must make the perturbation test fail."""
+def uvr_leak(current, tau, history, free_cop, lots, payment_schedule, cfg):
+    """Plan 1 that moves money from the FIC to the CDT according to next month's UVR."""
+    future_uvr = current["panel"].loc[history.index[-1] + 1, "uvr_cop"]  # the leak
+    alloc = backtest.conservative_strategy(tau, history, free_cop, lots, payment_schedule, cfg)
+    shift = min(alloc.fic_cop, free_cop * future_uvr / 10_000)
+    shifted = [{**lot, "principal_cop": lot["principal_cop"] + shift} for lot in alloc.lots]
+    return alloc._replace(fic_cop=alloc.fic_cop - shift, lots=shifted)
+
+
+def vol_leak(current, tau, history, free_cop, lots, payment_schedule, cfg):
+    """Plan 3 that moves money between its ETFs according to next month's volatility."""
+    future_vol = current["panel"].loc[history.index[-1] + 1, "icolcap_vol_ea"]  # the leak
+    alloc = backtest.ldi_strategy(tau, history, free_cop, lots, payment_schedule, cfg)
+    shift = alloc.etf_cop["cspx"] * min(future_vol, 1.0) / 2
+    etfs = {"icolcap": alloc.etf_cop["icolcap"] + shift, "cspx": alloc.etf_cop["cspx"] - shift}
+    return alloc._replace(etf_cop=etfs)
+
+
+@pytest.mark.parametrize("leak", [uvr_leak, vol_leak], ids=["plan-1-uvr", "plan-3-volatility"])
+def test_the_lookahead_test_catches_a_leak(monkeypatch, cfg, schedule, leak):
+    """A plan that peeks at next month's data must make the perturbation test fail."""
     panel = varied_panel(cfg)
     scrambled = scramble_after(panel, cfg, 6)
     current = {}
 
-    def leaky(tau, history, free_cop, lots, payment_schedule, cfg):
-        future_uvr = current["panel"].loc[history.index[-1] + 1, "uvr_cop"]  # the leak
-        alloc = backtest.conservative_strategy(tau, history, free_cop, lots, payment_schedule, cfg)
-        shift = min(alloc.fic_cop, free_cop * future_uvr / 10_000)
-        shifted = [{**lot, "principal_cop": lot["principal_cop"] + shift} for lot in alloc.lots]
-        return alloc._replace(fic_cop=alloc.fic_cop - shift, lots=shifted)
+    def leaky(*args):
+        return leak(current, *args)
 
     monkeypatch.setitem(PLANS, "leaky", leaky)
     original_run = backtest.run_backtest
@@ -106,7 +121,7 @@ def test_the_lookahead_test_catches_a_leak(monkeypatch, cfg, schedule):
 
     with pytest.raises(AssertionError):
         base, other = run(panel, schedule, cfg, "leaky"), run(scrambled, schedule, cfg, "leaky")
-        pd.testing.assert_frame_equal(base[base["month"] <= 6], other[other["month"] <= 6], rtol=1e-9)
+        pd.testing.assert_frame_equal(base[base["month"] <= 6], other[other["month"] <= 6], check_exact=True)
 
 
 @pytest.mark.parametrize("plan", ALL_PLANS)

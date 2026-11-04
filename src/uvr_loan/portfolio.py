@@ -161,12 +161,12 @@ def ladder_purchases(
     # shortest terms (minimum sum of amount x term over y[tau, :]; future purchases are decided
     # again at each review), so the executed purchase does not depend on the solver.
     best = result.x[-1]
-    floor = np.zeros(a_eq.shape[1])
-    floor[-1] = -1.0  # -c[H] <= -(best - tolerance)
+    min_final_cash = np.zeros(a_eq.shape[1])
+    min_final_cash[-1] = -1.0  # -c[H] <= -(best - tolerance)
     shortest = np.zeros(a_eq.shape[1])
     shortest[:n_lots] = [j if s == tau else 0.0 for s, j in lots]
     tolerance = 1e-9 * max(1.0, abs(best))
-    result = _solve(shortest, a_eq, b_eq, tau, a_ub=floor[None, :], b_ub=[-(best - tolerance)])
+    result = _solve(shortest, a_eq, b_eq, tau, a_ub=min_final_cash[None, :], b_ub=[-(best - tolerance)])
 
     buy = dict.fromkeys(cdt_real_ea, 0.0)
     for col, (s, j) in enumerate(lots):

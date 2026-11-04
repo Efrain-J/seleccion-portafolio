@@ -206,21 +206,42 @@ def total_funding_ratio(free_cop: float, live_cdt_cop: float, floor_cop: float) 
     return (free_cop + live_cdt_cop) / needed if needed > 0 else np.inf
 
 
+def check_panel(panel: pd.DataFrame, backtest_cfg: dict[str, Any], price_columns: list[str]) -> None:
+    """Raise ValueError if a month of the backtest (t0 .. t0 + horizon) is missing, has a missing
+    value, or has an ETF price that is not positive: they would give NaN or inf results silently."""
+    months = [month_to_period(backtest_cfg["t0"], m) for m in range(backtest_cfg["horizon_months"] + 1)]
+    absent = [str(p) for p in months if p not in panel.index]
+    if absent:
+        raise ValueError(f"The panel has no data for months: {', '.join(absent)}")
+    used = panel.loc[months]
+    for column in used.columns:
+        missing = used.index[used[column].isna()]
+        if len(missing):
+            raise ValueError(f"Missing values of {column} in months: {', '.join(map(str, missing))}")
+    for column in price_columns:
+        bad = used.index[used[column] <= 0]
+        if len(bad):
+            raise ValueError(
+                f"Prices of {column} must be positive, not in months: {', '.join(map(str, bad))}"
+            )
+
+
 def run_backtest(
     panel: pd.DataFrame, payment_schedule: pd.DataFrame, cfg: dict[str, Any], plan: str = "conservative"
 ) -> pd.DataFrame:
     """One row per month 0..horizon with the payment, shortfall and value of each asset in COP.
 
     The ETFs are the entries of `data.etfs`, priced with the panel columns `<name>_price_cop`; each
-    one gets a `<name>_cop` column and
-    `etf_cop` is their total. At reviews, `floor_cop` and `funding_ratio_total` (see
-    `total_funding_ratio`) are recorded when the plan has a floor (NaN otherwise).
+    one gets a `<name>_cop` column and `etf_cop` is their total. At reviews, `floor_cop` and
+    `funding_ratio_total` (see `total_funding_ratio`) are recorded when the plan has a floor (NaN
+    otherwise). Raises ValueError if the months of the backtest are not usable (`check_panel`).
     """
     bt = cfg["backtest"]
     reviews = set(decision_months(bt))
     payments_uvr = payment_schedule.set_index("month")["total_payment_uvr"]
     allocate = PLANS[plan]
     names = list(cfg["data"]["etfs"])
+    check_panel(panel, bt, [name + PRICE_SUFFIX for name in names])
 
     fic, lots = float(cfg["initial_capital_cop"]), []
     units = dict.fromkeys(names, 0.0)
@@ -295,7 +316,8 @@ def summary(results: pd.DataFrame) -> dict[str, float]:
         "final_wealth_net_cop": results["wealth_net_cop"].iloc[-1],
         "annual_return": growth.iloc[-1] ** (12 / len(monthly)) - 1,
         "annual_volatility": monthly.std() * np.sqrt(12),
-        "max_drawdown": (1 - growth / growth.cummax()).max(),
+        # The path starts at 1 in month 0, so a fall in the first month also counts.
+        "max_drawdown": (1 - growth / np.maximum(growth.cummax(), 1.0)).max(),
     }
 
 

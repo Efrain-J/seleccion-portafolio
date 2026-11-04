@@ -351,3 +351,38 @@ def test_only_the_etfs_of_the_config_are_tracked():
     results = run_backtest(panel, make_schedule({}), cfg, "ldi")
     assert "tes_cop" not in results.columns
     assert {"icolcap_cop", "cspx_cop"} <= set(results.columns)
+
+
+def test_max_drawdown_counts_a_fall_in_the_first_month():
+    """The growth series starts at 1 in month 0, so a fall in month 1 is a drawdown."""
+    wealth = [100.0, 95.0, 99.75]
+    results = pd.DataFrame(
+        {
+            "payment_cop": 0.0,
+            "shortfall_cop": 0.0,
+            "etf_sold_cop": 0.0,
+            "fic_cop": wealth,
+            "etf_cop": 0.0,
+            "wealth_cop": wealth,
+            "wealth_net_cop": wealth,
+        }
+    )
+    assert summary(results)["max_drawdown"] == pytest.approx(0.05)
+
+
+@pytest.mark.parametrize(
+    "spoil,message",
+    [
+        (lambda p: p.assign(fic_rate_ea=p["fic_rate_ea"].where(p.index != p.index[-3])), "fic_rate_ea"),
+        (
+            lambda p: p.assign(icolcap_price_cop=p["icolcap_price_cop"].where(p.index != p.index[-3], 0.0)),
+            "icolcap",
+        ),
+        (lambda p: p.drop(p.index[-3]), "2020-11"),
+    ],
+    ids=["nan-after-t0", "zero-etf-price", "missing-month"],
+)
+def test_run_backtest_rejects_a_bad_panel(spoil, message):
+    cfg = make_cfg()
+    with pytest.raises(ValueError, match=message):
+        run_backtest(spoil(make_panel(cfg)), make_schedule({}), cfg, "ldi")

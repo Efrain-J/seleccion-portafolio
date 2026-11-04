@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -234,3 +235,24 @@ def test_etf_cache_file_includes_the_start_date(monkeypatch, tmp_path):
     assert (tmp_path / "yahoo_CSPX.L_2013-01-01.csv").exists()
     assert calls == [("CSPX.L", "2013-01-01", "2026-11-30")]
     assert list(prices["cspx"]) == [1.0, 2.0]
+
+
+def test_etf_columns_only_use_data_up_to_each_month():
+    """Changing prices and TRM after a cut must not change the price or volatility of any month up to the cut."""
+    days = pd.date_range("2013-01-31", periods=60, freq="ME")
+    rng = np.random.default_rng(0)
+    usd = pd.Series(100 * np.cumprod(1 + rng.normal(0, 0.04, 60)), days)
+    trm = pd.Series(3_000 * np.cumprod(1 + rng.normal(0, 0.02, 60)), days)
+    cut = days[40]
+    later = days > cut
+    usd_bad, trm_bad = usd.copy(), trm.copy()
+    usd_bad[later] *= 5.0
+    trm_bad[later] *= 0.2
+
+    def build(price, rate):
+        return etf_columns({"cspx": price}, {"cspx": "USD"}, rate, window=12)
+
+    base, bad = build(usd, trm), build(usd_bad, trm_bad)
+    month = cut.to_period("M")
+    pd.testing.assert_frame_equal(base.loc[:month], bad.loc[:month], check_exact=True)
+    assert not base.loc[month + 1 :].equals(bad.loc[month + 1 :])
