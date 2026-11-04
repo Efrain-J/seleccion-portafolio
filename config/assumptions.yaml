@@ -32,6 +32,7 @@ data:
   start: "2016-01-01"          # first day of the FIC data (Superfinanciera)
   end: "2026-11-30"
   etf_history_start: "2013-01-01"  # ETFs are downloaded from here: their volatility needs years before t0
+  vol_window_months: 36        # months of returns behind <name>_vol_ea (only months up to each one)
   etfs:                        # Yahoo Finance, adjusted close; panel column <name>_price_cop (USD converted with the TRM)
     icolcap: {ticker: ICOLCAP.CL, currency: COP}   # iShares MSCI COLCAP (BVC)
     cspx: {ticker: CSPX.L, currency: USD}          # iShares Core S&P 500 UCITS, Irish, accumulating (LSE, USD line)
@@ -56,5 +57,4 @@ cdt_ladder:                    # Plan 2: ladder of fixed-rate CDTs chosen with a
 ldi:                           # Plan 3: CDT ladder up to the floor (x 1.05), ETFs with the rest (CPPI with m = 1)
   floor_scenario: high         # inflation of the floor and of the ladder bought with it
   floor_buffer: 0.05           # the ladder gets (1 + buffer) x floor; the rest of the free money goes to the ETFs
-  growth_assets: [icolcap, cspx]   # names in data.etfs; split by inverse volatility
-  vol_window_months: 36        # months of returns behind <name>_vol_ea (only months up to each review)
+  growth_assets: [icolcap, cspx]   # names in data.etfs; split by inverse volatility (data.vol_window_months)

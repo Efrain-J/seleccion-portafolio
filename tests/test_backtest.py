@@ -329,3 +329,25 @@ def test_total_funding_ratio():
     assert backtest.total_funding_ratio(300.0, 100.0, 100.0) == pytest.approx(2.0)
     assert backtest.total_funding_ratio(300.0, 0.0, 0.0) == float("inf")  # nothing left to pay
     assert np.isnan(backtest.total_funding_ratio(300.0, 100.0, float("nan")))  # plan without a floor
+
+
+def test_ldi_without_growth_assets_raises_instead_of_losing_the_money():
+    cfg = make_cfg()
+    cfg["ldi"] = {**cfg["ldi"], "growth_assets": []}
+    with pytest.raises(ValueError, match="no growth assets"):
+        run_ldi(cfg, {7: 100.0})
+
+
+def test_ldi_with_a_missing_volatility_raises_instead_of_returning_nan():
+    with pytest.raises(ValueError, match="icolcap"):
+        run_ldi(make_cfg(), {7: 100.0}, icolcap_vol=float("nan"))
+
+
+def test_only_the_etfs_of_the_config_are_tracked():
+    """An extra `<name>_price_cop` column in the panel is not an ETF unless it is in `data.etfs`."""
+    cfg = make_cfg()
+    panel = make_panel(cfg)
+    panel["tes_price_cop"] = 100.0
+    results = run_backtest(panel, make_schedule({}), cfg, "ldi")
+    assert "tes_cop" not in results.columns
+    assert {"icolcap_cop", "cspx_cop"} <= set(results.columns)

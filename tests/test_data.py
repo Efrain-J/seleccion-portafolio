@@ -211,3 +211,26 @@ def test_etf_columns_reject_an_unknown_currency():
     s = pd.Series([1.0], pd.to_datetime(["2020-01-31"]))
     with pytest.raises(ValueError, match="EUR"):
         etf_columns({"x": s}, {"x": "EUR"}, s, window=2)
+
+
+def test_etf_cache_file_includes_the_start_date(monkeypatch, tmp_path):
+    """A cache downloaded with another start date must not be reused, so the start is in the file name."""
+    calls = []
+
+    def fake_fetch(ticker, start, end):
+        calls.append((ticker, start, end))
+        return pd.Series([1.0, 2.0], pd.to_datetime(["2013-01-02", "2013-01-03"]), name="value")
+
+    monkeypatch.setattr(sources, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(sources, "fetch_yahoo_close", fake_fetch)
+    cfg = {
+        "data": {
+            "etf_history_start": "2013-01-01",
+            "end": "2026-11-30",
+            "etfs": {"cspx": {"ticker": "CSPX.L", "currency": "USD"}},
+        }
+    }
+    prices = sources.load_etf_prices(cfg)
+    assert (tmp_path / "yahoo_CSPX.L_2013-01-01.csv").exists()
+    assert calls == [("CSPX.L", "2013-01-01", "2026-11-30")]
+    assert list(prices["cspx"]) == [1.0, 2.0]

@@ -132,10 +132,10 @@ def load_monthly_panel(cfg: dict[str, Any]) -> pd.DataFrame:
     raw["fic_index"] = build_fic_index(load_fic_funds(cfg), data["fic_source"]["max_daily_change"])
     panel = build_monthly_panel(raw, data["cdt_series"], data["start"][:7], str(end))
     currencies = {name: etf["currency"] for name, etf in data["etfs"].items()}
-    etfs = etf_columns(load_etf_prices(cfg), currencies, raw["trm_cop"], cfg["ldi"]["vol_window_months"])
+    etfs = etf_columns(load_etf_prices(cfg), currencies, raw["trm_cop"], data["vol_window_months"])
     panel = panel.join(fic_returns(panel["fic_index"])).join(etfs)
-    # The FIC returns start one month after the panel and the volatilities need `vol_window_months` of
-    # history (ICOLCAP starts in May 2013), so only the prices are checked before t0.
+    # The FIC returns start one month after the panel and the volatilities need `data.vol_window_months`
+    # of history (ICOLCAP starts in May 2013), so only the prices are checked before t0.
     prices = [c for c in etfs.columns if c.endswith("_price_cop")]
     check_complete(panel[prices])
     check_complete(panel.loc[cfg["backtest"]["t0"] :, etfs.columns])

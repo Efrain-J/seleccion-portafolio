@@ -184,6 +184,30 @@ def test_live_cdts_lower_the_floor_and_it_is_never_negative():
     assert not math.copysign(1.0, covered) < 0  # not -0.0
 
 
-def test_inverse_volatility_weights():
-    assert inverse_volatility_weights({"a": 0.2, "b": 0.2}) == pytest.approx({"a": 0.5, "b": 0.5})
-    assert inverse_volatility_weights({"a": 0.1, "b": 0.3}) == pytest.approx({"a": 0.75, "b": 0.25})
+@pytest.mark.parametrize(
+    "vols,expected",
+    [
+        ({"a": 0.2, "b": 0.2}, {"a": 0.5, "b": 0.5}),
+        ({"a": 0.1, "b": 0.3}, {"a": 0.75, "b": 0.25}),
+    ],
+    ids=["equal-volatilities", "lower-volatility-weighs-more"],
+)
+def test_inverse_volatility_weights(vols, expected):
+    assert inverse_volatility_weights(vols) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "vols,message",
+    [
+        ({}, "no growth assets"),
+        ({"a": 0.2, "b": math.nan}, "b"),
+        ({"a": 0.0, "b": 0.2}, "a"),
+        ({"a": -0.1, "b": 0.2}, "a"),
+        ({"a": 0.2, "b": math.inf}, "b"),
+    ],
+    ids=["empty", "nan", "zero", "negative", "infinite"],
+)
+def test_inverse_volatility_weights_reject_invalid_input(vols, message):
+    """Without this check, an empty list loses the money and a bad volatility turns every value into NaN."""
+    with pytest.raises(ValueError, match=message):
+        inverse_volatility_weights(vols)

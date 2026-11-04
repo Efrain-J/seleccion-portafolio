@@ -4,9 +4,9 @@ Each month (S12): the FIC grows with the realized return of the FIC index, the C
 mature move to the FIC, and then the loan payment is taken from the liquidity: first the FIC,
 then ETF units sold at the price of the month; what is still missing is recorded as shortfall
 (S9). CDTs are never redeemed early. At each review the free money (FIC + ETF) is reallocated
-by the plan's strategy; live CDTs are held to maturity (S13). There can be several ETFs (one
-per `<name>_price_cop` column of the panel); when they must cover a payment, each one is sold in
-proportion to its value.
+by the plan's strategy; live CDTs are held to maturity (S13). There can be several ETFs (one per
+entry of `data.etfs` in the config, priced with the panel column `<name>_price_cop`); when they
+must cover a payment, each one is sold in proportion to its value.
 
 Run `python -m uvr_loan.backtest` to write the results of every plan to results/.
 """
@@ -30,6 +30,9 @@ from uvr_loan.portfolio import (
 # A fixed-rate CDT lot: `principal_cop` bought in month `buy_month` at the annual `rate_ea`,
 # paid in `maturity_month`.
 Lot = dict[str, Any]
+
+# Panel column with the price in COP of an ETF of `data.etfs`: `<name>_price_cop`.
+PRICE_SUFFIX = "_price_cop"
 
 
 class Allocation(NamedTuple):
@@ -77,6 +80,11 @@ def conservative_strategy(
     return Allocation(alloc["fic_cop"], {}, [cdt])
 
 
+def _cdt_terms(cfg: dict[str, Any]) -> dict[int, str]:
+    """CDT term in months: panel column with its rate (`cdt_ladder.term_columns`, used by plans 2 and 3)."""
+    return {int(j): column for j, column in cfg["cdt_ladder"]["term_columns"].items()}
+
+
 def _ladder_inputs(
     tau: int, history: pd.DataFrame, lots: list[Lot], cfg: dict[str, Any], scenario: str
 ) -> tuple[dict[int, float], dict[int, float], float]:
@@ -85,7 +93,7 @@ def _ladder_inputs(
     Returns the maturities of the live lots in UVR (converted with the projected UVR) and the
     expected real annual return of each CDT term and of the FIC (nominal rate of tau deflated).
     """
-    terms = {int(j): column for j, column in cfg["cdt_ladder"]["term_columns"].items()}
+    terms = _cdt_terms(cfg)
     row = history.iloc[-1]
     inflation = scenarios(cfg, history["uvr_cop"])[scenario]
 
@@ -103,7 +111,7 @@ def _ladder_inputs(
 
 def _bought_lots(tau: int, row: pd.Series, buy_uvr: dict[int, float], cfg: dict[str, Any]) -> list[Lot]:
     """CDT lots for the LP purchases of review tau, at the observed rate of each term."""
-    terms = {int(j): column for j, column in cfg["cdt_ladder"]["term_columns"].items()}
+    terms = _cdt_terms(cfg)
     return [
         {
             "principal_cop": amount_uvr * row["uvr_cop"],
@@ -161,6 +169,7 @@ def ldi_strategy(
     (1 + `floor_buffer`) x floor, or all the free money if it is less; the rest goes to the ETFs of
     `growth_assets`, split by inverse volatility. A fall of the ETFs never touches the ladder. If the
     free money is below the floor, no ladder is possible: the money stays in the FIC, as in plan 2.
+    The ladder buys the same CDT terms as plan 2 (`cdt_ladder.term_columns`).
     """
     params = cfg["ldi"]
     row = history.iloc[-1]
@@ -184,8 +193,6 @@ def ldi_strategy(
 
 PLANS = {"conservative": conservative_strategy, "cdt_ladder": cdt_ladder_strategy, "ldi": ldi_strategy}
 
-PRICE_SUFFIX = "_price_cop"
-
 
 def total_funding_ratio(free_cop: float, live_cdt_cop: float, floor_cop: float) -> float:
     """(free money + live CDTs) / (floor + live CDTs), all in COP at a review.
@@ -204,7 +211,8 @@ def run_backtest(
 ) -> pd.DataFrame:
     """One row per month 0..horizon with the payment, shortfall and value of each asset in COP.
 
-    The ETFs are the panel columns `<name>_price_cop`; each one gets a `<name>_cop` column and
+    The ETFs are the entries of `data.etfs`, priced with the panel columns `<name>_price_cop`; each
+    one gets a `<name>_cop` column and
     `etf_cop` is their total. At reviews, `floor_cop` and `funding_ratio_total` (see
     `total_funding_ratio`) are recorded when the plan has a floor (NaN otherwise).
     """
@@ -212,7 +220,7 @@ def run_backtest(
     reviews = set(decision_months(bt))
     payments_uvr = payment_schedule.set_index("month")["total_payment_uvr"]
     allocate = PLANS[plan]
-    names = [c.removesuffix(PRICE_SUFFIX) for c in panel.columns if c.endswith(PRICE_SUFFIX)]
+    names = list(cfg["data"]["etfs"])
 
     fic, lots = float(cfg["initial_capital_cop"]), []
     units = dict.fromkeys(names, 0.0)

@@ -21,8 +21,8 @@ from 2013 on 2026-11-04) with
 In the monthly panel (`src/uvr_loan/data/cleaning.py`) every series takes its last value of each calendar month, and
 the rates are converted from % to decimals. The ETFs (`data.etfs` in the config) are downloaded from
 `data.etf_history_start` (2013), before the rest of the panel, because `<name>_vol_ea` needs 36 months of returns
-before t0: it is the standard deviation of the last 36 monthly returns in COP times sqrt(12), using only months up to
-its own. A USD price is converted with the month-end TRM of the same month (`etf_columns`). The cache file name of an
+(`data.vol_window_months`) before t0: it is the standard deviation of the last 36 monthly returns in COP times
+sqrt(12), using only months up to its own. A USD price is converted with the month-end TRM of the same month (`etf_columns`). The cache file name of an
 ETF includes the start date, so a cache downloaded with another start is not reused.
 
 ## Banco de la República – SUAMECA

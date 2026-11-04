@@ -12,6 +12,12 @@ def make_cfg(cdt_weight=0.90, horizon=12, k=6, terms=None, grace_months=0):
         "inflation_scenarios": {"base_lookback_months": 6, "high_shock_pp": 0.0, "low_shock_pp": 0.0},
         "cdt_ladder": {"deflator_scenario": "base", "term_columns": terms or {6: "cdt_180d_ea"}},
         "ldi": {"floor_scenario": "base", "floor_buffer": 0.05, "growth_assets": ["icolcap", "cspx"]},
+        "data": {
+            "etfs": {
+                "icolcap": {"ticker": "ICOLCAP.CL", "currency": "COP"},
+                "cspx": {"ticker": "CSPX.L", "currency": "USD"},
+            }
+        },
     }
 
 

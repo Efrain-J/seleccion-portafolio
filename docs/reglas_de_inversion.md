@@ -338,7 +338,7 @@ inversionista colombiano. Los TES (UVR y tasa fija) quedan como tema pendiente p
 | $G$ | Parte de crecimiento (ETF) en $\tau$ | COP | – |
 | $V_\tau$ | Valor de los CDT vivos en $\tau$ (antes de comprar los nuevos) | COP | – |
 | $F_\tau$ | Indicador de cobertura del portafolio completo: $(W + V_\tau) / (B^{\min}_\tau\,\text{UVR}_\tau + V_\tau)$. Solo se reporta; no interviene en la decisión | – | columna `funding_ratio_total` |
-| $\sigma_i(\tau)$ | Volatilidad anual del ETF $i$: desviación estándar de sus últimos 36 rendimientos mensuales en COP × $\sqrt{12}$ | decimal | columnas `<nombre>_vol_ea` |
+| $\sigma_i(\tau)$ | Volatilidad anual del ETF $i$: desviación estándar de sus últimos 36 rendimientos mensuales en COP × $\sqrt{12}$ (YAML `data.vol_window_months`) | decimal | columnas `<nombre>_vol_ea` |
 
 ### Cómo se decide en cada revisión $\tau$
 

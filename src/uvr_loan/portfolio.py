@@ -12,6 +12,7 @@ Plan 3 (LDI): the floor is the smallest budget of that same LP (`ladder_floor`);
 gets (1 + buffer) x floor and the rest goes to ETFs split by inverse volatility.
 """
 
+import math
 from collections.abc import Sequence
 from typing import Any
 
@@ -108,11 +109,20 @@ def ladder_floor(
     floor = float(_solve(objective, np.hstack([a_eq, budget]), b_eq, tau).x[-1])
     # When the live CDTs already cover every payment the floor is 0, and the solver can return -0.0
     # (or a tiny negative); a negative floor would make no sense.
-    return max(floor, 0.0) + 0.0
+    return floor if floor > 0 else 0.0
 
 
 def inverse_volatility_weights(vols: dict[str, float]) -> dict[str, float]:
-    """Weights proportional to 1 / volatility; with two assets each one contributes the same risk."""
+    """Weights proportional to 1 / volatility; with two assets each one contributes the same risk.
+
+    Raises ValueError if there are no assets (the money would not go anywhere) or a volatility is
+    not a finite positive number (the weights would be NaN).
+    """
+    if not vols:
+        raise ValueError("There are no growth assets to split the money among")
+    for name, vol in vols.items():
+        if not (math.isfinite(vol) and vol > 0):
+            raise ValueError(f"The volatility of {name} must be finite and positive, got {vol}")
     inverse = {name: 1 / vol for name, vol in vols.items()}
     total = sum(inverse.values())
     return {name: value / total for name, value in inverse.items()}
