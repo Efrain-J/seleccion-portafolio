@@ -1,9 +1,10 @@
 """Monthly backtest of the investment plans with dynamic reviews every k months.
 
 Each month (S12): the FIC grows with the realized return of the FIC index, the CDTs that
-mature move to the FIC, and then the loan payment is taken from the FIC (what is missing is
-recorded as shortfall, nothing is sold: S9). At each review the free money (FIC + ETF) is
-reallocated by the plan's strategy; live CDTs are held to maturity (S13).
+mature move to the FIC, and then the loan payment is taken from the liquidity: first the FIC,
+then ETF units sold at the price of the month; what is still missing is recorded as shortfall
+(S9). CDTs are never redeemed early. At each review the free money (FIC + ETF) is reallocated
+by the plan's strategy; live CDTs are held to maturity (S13).
 
 Run `python -m uvr_loan.backtest` to write the results of every plan to results/.
 """
@@ -127,7 +128,7 @@ def run_backtest(
     rows = []
     for m in range(bt["horizon_months"] + 1):
         row = panel.loc[month_to_period(bt["t0"], m)]
-        payment = shortfall = 0.0
+        payment = shortfall = etf_sold = 0.0
         if m > 0:
             fic *= 1 + row["fic_ret_m"]  # realized return of the FIC index in month m
             fic += sum(lot_value(lot, m) for lot in lots if lot["maturity_month"] == m)
@@ -135,6 +136,9 @@ def run_backtest(
             payment = payments_uvr.get(m, 0.0) * row["uvr_cop"]
             shortfall = max(payment - fic, 0.0)
             fic -= payment - shortfall
+            etf_sold = min(shortfall, etf_units * row["etf_price_cop"])  # the ETF covers what the FIC can't
+            etf_units -= etf_sold / row["etf_price_cop"]
+            shortfall -= etf_sold
 
         if m in reviews:
             free_cop = fic + etf_units * row["etf_price_cop"]
@@ -152,6 +156,7 @@ def run_backtest(
                 "uvr_cop": row["uvr_cop"],
                 "payment_cop": payment,
                 "shortfall_cop": shortfall,
+                "etf_sold_cop": etf_sold,
                 "fic_cop": fic,
                 "cdt_cop": cdt,
                 "etf_cop": etf,
@@ -163,14 +168,17 @@ def run_backtest(
 
 
 def summary(results: pd.DataFrame) -> dict[str, float]:
-    """Shortfalls, liquidity and time-weighted return metrics (payments are not counted as losses)."""
+    """Shortfalls, liquidity (FIC + ETF) and time-weighted return metrics (payments are not losses)."""
     paid = results["payment_cop"] - results["shortfall_cop"]
     monthly = ((results["wealth_cop"] + paid) / results["wealth_cop"].shift() - 1).iloc[1:]
     growth = (1 + monthly).cumprod()
     return {
         "shortfall_months": int((results["shortfall_cop"] > 0).sum()),
         "total_shortfall_cop": results["shortfall_cop"].sum(),
-        "min_fic_at_payment_cop": results.loc[results["payment_cop"] > 0, "fic_cop"].min(),
+        "min_liquid_at_payment_cop": (results["fic_cop"] + results["etf_cop"])[
+            results["payment_cop"] > 0
+        ].min(),
+        "total_etf_sold_cop": results["etf_sold_cop"].sum(),
         "final_wealth_cop": results["wealth_cop"].iloc[-1],
         "annual_return": growth.iloc[-1] ** (12 / len(monthly)) - 1,
         "annual_volatility": monthly.std() * np.sqrt(12),

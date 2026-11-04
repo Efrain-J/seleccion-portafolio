@@ -37,7 +37,9 @@ $\tau$ es un dato conocido al cierre del mes $\tau$. El orden dentro de un mes e
 | $W$ | Dinero libre en $\tau$: FIC + ETF a precio de mercado (lo que vence en $\tau$ ya está en el FIC; los planes actuales no tienen ETF) | COP | variable `free_cop` |
 | $L$ | Necesidad de liquidez del plan 1 en $\tau$ | COP | función `projected_payments_cop` |
 | $w$ | Plan 1: parte de $W - L$ que va al CDT (0,90); el resto queda en el FIC | decimal | YAML `conservative.cdt_weight` |
-| $D_m$ | Déficit del mes $m$: parte del pago que el FIC no cubre | COP | columna `shortfall_cop` |
+| $E_m$ | Valor del ETF al cierre del mes $m$, a precio de mercado | COP | columna `etf_cop` |
+| — | **Liquidez:** FIC + ETF ($F_m + E_m$); los CDT no son liquidez hasta que vencen | COP | métrica `min_liquid_at_payment_cop` |
+| $D_m$ | Déficit del mes $m$: parte del pago que no cubren ni el FIC ni el ETF | COP | columna `shortfall_cop` |
 
 **Escenarios de inflación.** En cada $\tau$ hay tres: base $=\pi^{\text{base}}_\tau$, alto
 $=\pi^{\text{base}}_\tau + 0{,}03$ y bajo $=\pi^{\text{base}}_\tau - 0{,}015$. El plan 1 usa el alto para dimensionar el
@@ -85,10 +87,11 @@ $$
 donde $V$ es el valor del CDT al vencer, en COP: capital $\times\,(1 + \text{tasa})^{\text{plazo}/12}$.
 
 $$
-D_m = \max\bigl(P_m\,\text{UVR}_m - F^{-}_m,\ 0\bigr)
+D_m = \max\bigl(P_m\,\text{UVR}_m - F^{-}_m - E^{-}_m,\ 0\bigr)
 $$
 
-donde $F^{-}_m$ es el saldo del FIC en el mes $m$ después de crecer y recibir lo que vence, y antes de pagar.
+donde $F^{-}_m$ es el saldo del FIC en el mes $m$ después de crecer y recibir lo que vence, y antes de pagar, y
+$E^{-}_m$ el valor del ETF a precio del mes $m$ antes de pagar.
 
 ## Supuestos comunes a todos los planes
 
@@ -103,8 +106,10 @@ donde $F^{-}_m$ es el saldo del FIC en el mes $m$ después de crecer y recibir l
   ($\pi^{\text{base}}_\tau$). Es un modelo provisional hasta que exista el modelo de inflación (`scenarios` en
   `src/uvr_loan/inflation.py`). Con 6 meses la base tiene estacionalidad: en abril ve los meses de inflación alta de
   comienzo de año y en octubre los de inflación baja.
-- **Déficit (S9):** si el FIC no alcanza para un pago, se registra el déficit $D_m$ y no se hace nada más: no se vende
-  ETF ni se redime un CDT antes del vencimiento.
+- **Liquidez y déficit (S9):** el pago sale primero del FIC; si no alcanza, se venden unidades del ETF al precio de ese
+  mes (columna `etf_sold_cop`). Solo si el FIC y el ETF juntos no alcanzan se registra el déficit $D_m$. Los CDT nunca
+  se redimen antes del vencimiento. El ETF se trata como liquidez en tiempo (venderlo tarda 2–3 días hábiles, poco
+  frente a un modelo mensual), pero no en valor: se vende al precio del mes, que puede estar en pérdida.
 - **FIC (S10):** rinde lo que rindió un índice de los FIC de mercado monetario reales: el valor de la unidad de cada
   fondo, publicado a diario por la Superfinanciera, promediado según el tamaño de cada fondo. Ver `data/SOURCES.md`.
 - **Sin costos ni impuestos (S3, S6):** comprar, vender y rebalancear no cuesta nada.
@@ -162,8 +167,8 @@ en déficit $D_m$ si al llegar el pago el FIC no lo cubre.
 
 - El FIC crece con su rentabilidad realizada del mes: $F^{-}_m = F_{m-1}\,(1 + r^{\text{FIC}}_m)$ más lo que vence.
 - El CDT crece a la tasa fijada al comprarlo: $\bigl(1 + r_6(\tau)\bigr)^{1/12}$ por mes.
-- Se paga la cuota del mes en COP, $P_m\,\text{UVR}_m$ (con la UVR **observada**), sacándola del FIC. Lo que falte es
-  el déficit $D_m$.
+- Se paga la cuota del mes en COP, $P_m\,\text{UVR}_m$ (con la UVR **observada**), sacándola del FIC. Como el plan 1
+  no tiene ETF, lo que falte es el déficit $D_m$.
 
 En la siguiente revisión el CDT vence, entra al FIC, paga el pago de ese mes y lo que queda forma el nuevo $W$. Así el
 FIC se ajusta a los pagos que vienen y el CDT vuelve a ser el 90 % del resto.

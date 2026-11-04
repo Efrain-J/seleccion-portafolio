@@ -104,6 +104,58 @@ def test_etf_follows_its_price(monkeypatch):
     assert results["etf_cop"].iloc[1] == pytest.approx(2_000.0)
 
 
+# The ETF is liquidity too: when the FIC cannot cover a payment, ETF units are sold (S9).
+
+
+def run_split(monkeypatch, fic_share, payments, etf=100.0):
+    """A plan that keeps `fic_share` of the free money in the FIC and the rest in the ETF."""
+
+    def split(tau, history, free_cop, lots, payment_schedule, cfg):
+        return fic_share * free_cop, (1 - fic_share) * free_cop, []
+
+    monkeypatch.setitem(PLANS, "split", split)
+    cfg = make_cfg()
+    return run_backtest(make_panel(cfg, etf=etf), make_schedule(payments), cfg, "split").set_index("month")
+
+
+def test_etf_is_sold_when_the_fic_cannot_cover_a_payment(monkeypatch):
+    results = run_split(monkeypatch, 0.0, {7: 100.0})  # everything in the ETF, price flat at 100
+    assert results.loc[7, "shortfall_cop"] == 0
+    assert results.loc[7, "etf_sold_cop"] == pytest.approx(100.0)
+    assert results.loc[7, "etf_cop"] == pytest.approx(900.0)
+
+
+def test_etf_is_sold_at_the_price_of_the_month(monkeypatch):
+    etf = [100.0] * 7 + [50.0] * 6  # the price halves in month 7
+    results = run_split(monkeypatch, 0.0, {7: 100.0}, etf=etf)
+    assert results.loc[7, "etf_sold_cop"] == pytest.approx(100.0)
+    assert results.loc[7, "etf_cop"] == pytest.approx(500.0 - 100.0)
+
+
+def test_fic_pays_first_and_the_etf_only_covers_the_rest(monkeypatch):
+    results = run_split(monkeypatch, 0.5, {7: 600.0})  # FIC 500, ETF 500
+    assert results.loc[7, "fic_cop"] == 0
+    assert results.loc[7, "etf_sold_cop"] == pytest.approx(100.0)
+    assert results.loc[7, "shortfall_cop"] == 0
+
+
+def test_shortfall_remains_when_fic_and_etf_are_not_enough(monkeypatch):
+    results = run_split(monkeypatch, 0.5, {7: 1_200.0})
+    assert results.loc[7, "etf_sold_cop"] == pytest.approx(500.0)
+    assert results.loc[7, "etf_cop"] == pytest.approx(0.0)
+    assert results.loc[7, "shortfall_cop"] == pytest.approx(200.0)
+
+
+def test_nothing_is_sold_when_the_fic_is_enough(monkeypatch):
+    results = run_split(monkeypatch, 0.5, {7: 100.0})
+    assert (results["etf_sold_cop"] == 0).all()
+
+
+def test_summary_liquidity_counts_fic_and_etf(monkeypatch):
+    results = run_split(monkeypatch, 0.5, {7: 100.0})
+    assert summary(results.reset_index())["min_liquid_at_payment_cop"] == pytest.approx(400.0 + 500.0)
+
+
 def test_columns_add_up_to_wealth():
     cfg = make_cfg()
     results = run_backtest(make_panel(cfg, fic=0.05, cdt_180=0.08), make_schedule({7: 50.0, 9: 70.0}), cfg)

@@ -102,9 +102,11 @@ Run the dynamic backtest of every plan from t0 to the end of the horizon (review
 ```
 
 It writes `results/backtest_<plan>.csv` for each plan (one row per month: `uvr_cop`, `payment_cop`, `shortfall_cop`,
-`fic_cop`, `cdt_cop`, `etf_cop`, `wealth_cop`, `is_review`) and `results/summary.csv` with one column per plan (months
-with shortfall, total shortfall, minimum FIC balance in a payment month, final wealth, annualized time-weighted return
-and volatility, maximum drawdown). If the FIC cannot cover a payment, the shortfall is recorded and nothing is sold.
+`etf_sold_cop`, `fic_cop`, `cdt_cop`, `etf_cop`, `wealth_cop`, `is_review`) and `results/summary.csv` with one column
+per plan (months with shortfall, total shortfall, minimum liquidity (FIC + ETF) in a payment month, ETF sold to pay,
+final wealth, annualized time-weighted return and volatility, maximum drawdown). Liquidity is FIC + ETF: a payment is
+taken from the FIC first and then from ETF units sold at that month's price; only what both cannot cover is recorded
+as shortfall. CDTs are never redeemed early.
 
 The notebook `notebooks/backtest_plans.ipynb` plots the wealth and the FIC liquidity of every plan and the real versus
 projected UVR.
