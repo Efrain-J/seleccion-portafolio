@@ -39,8 +39,8 @@ def conservative_strategy(
 ) -> tuple[float, float, list[Lot]]:
     """Plan 1. Its CDT matures exactly at the next review, so no lot is alive at a review.
 
-    The FIC holds the payments of months tau+1 .. tau+k-1: the CDT matures in month tau+k and
-    pays that month (S12).
+    The FIC holds the payments of months tau+1 .. tau+k-1 (the CDT matures in month tau+k and
+    pays that month, S12) plus (1 - `cdt_weight`) of the rest. There is no ETF.
     """
     params, k = cfg["conservative"], cfg["backtest"]["review_every_months"]
     row = history.iloc[-1]
@@ -53,7 +53,7 @@ def conservative_strategy(
         "buy_month": tau,
         "maturity_month": tau + k,
     }
-    return alloc["fic_cop"], alloc["etf_cop"], [cdt]
+    return alloc["fic_cop"], 0.0, [cdt]
 
 
 def cdt_ladder_strategy(

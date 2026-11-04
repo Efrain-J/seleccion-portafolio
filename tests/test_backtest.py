@@ -5,11 +5,11 @@ from uvr_loan import backtest
 from uvr_loan.backtest import PLANS, run_backtest, summary
 
 
-def make_cfg(etf_weight=0.10, horizon=12, k=6, terms=None):
+def make_cfg(cdt_weight=0.90, horizon=12, k=6, terms=None):
     return {
         "initial_capital_cop": 1_000.0,
         "backtest": {"t0": "2020-01", "horizon_months": horizon, "review_every_months": k},
-        "conservative": {"etf_weight": etf_weight, "fic_sizing_scenario": "base"},
+        "conservative": {"cdt_weight": cdt_weight, "fic_sizing_scenario": "base"},
         "inflation_scenarios": {"base_lookback_months": 6, "high_shock_pp": 0.0, "low_shock_pp": 0.0},
         "cdt_ladder": {"deflator_scenario": "base", "term_columns": terms or {6: "cdt_180d_ea"}},
     }
@@ -54,7 +54,7 @@ def test_no_payments_and_zero_rates_keep_wealth():
 
 
 def test_wealth_grows_at_the_rates():
-    cfg = make_cfg(etf_weight=0.0)
+    cfg = make_cfg(cdt_weight=1.0)
     results = run_backtest(make_panel(cfg, fic=0.12, cdt_180=0.12), make_schedule({}), cfg)
     assert results["wealth_cop"].iloc[-1] == pytest.approx(1_000.0 * 1.12)
 
@@ -64,12 +64,12 @@ def test_covered_payments_leave_the_portfolio():
     results = run_backtest(make_panel(cfg), make_schedule({7: 100.0, 8: 100.0}), cfg)
     assert results["shortfall_cop"].sum() == 0
     assert results["wealth_cop"].iloc[-1] == pytest.approx(800.0)
-    assert results.set_index("month").loc[6, "fic_cop"] == pytest.approx(200.0)
+    assert results.set_index("month").loc[6, "fic_cop"] == pytest.approx(200.0 + 0.10 * 800.0)
 
 
 def test_conservative_fic_reserves_payments_until_the_month_before_the_cdt_matures():
     """S12 (n - 1): the CDT bought at the review of month 6 matures in month 12 and pays P_12."""
-    cfg = make_cfg()
+    cfg = make_cfg(cdt_weight=1.0)
     results = run_backtest(make_panel(cfg), make_schedule({m: 10.0 for m in range(7, 13)}), cfg)
     results = results.set_index("month")
     assert results.loc[6, "fic_cop"] == pytest.approx(50.0)  # months 7..11
@@ -77,7 +77,7 @@ def test_conservative_fic_reserves_payments_until_the_month_before_the_cdt_matur
 
 
 def test_shortfall_is_recorded_when_uvr_rises_more_than_projected():
-    cfg = make_cfg()
+    cfg = make_cfg(cdt_weight=1.0)  # the FIC holds only the projected payments
     uvr = [1.0] * 7 + [2.0] * 6  # projected flat at the review of month 6, doubles in month 7
     results = run_backtest(make_panel(cfg, uvr=uvr), make_schedule({7: 100.0}), cfg).set_index("month")
     assert results.loc[7, "payment_cop"] == pytest.approx(200.0)
@@ -85,10 +85,22 @@ def test_shortfall_is_recorded_when_uvr_rises_more_than_projected():
     assert results.loc[7, "fic_cop"] == 0
 
 
-def test_etf_follows_its_price():
-    cfg = make_cfg(etf_weight=1.0)
+def test_conservative_plan_holds_no_etf():
+    cfg = make_cfg()
+    results = run_backtest(make_panel(cfg, etf=[100.0] + [200.0] * 12), make_schedule({7: 10.0}), cfg)
+    assert (results["etf_cop"] == 0).all()
+
+
+def test_etf_follows_its_price(monkeypatch):
+    """The engine still supports an ETF (for future plans): a plan that puts everything in it."""
+
+    def all_in_etf(tau, history, free_cop, lots, payment_schedule, cfg):
+        return 0.0, free_cop, []
+
+    monkeypatch.setitem(PLANS, "all_in_etf", all_in_etf)
+    cfg = make_cfg()
     etf = [100.0] + [200.0] * 12
-    results = run_backtest(make_panel(cfg, etf=etf), make_schedule({}), cfg)
+    results = run_backtest(make_panel(cfg, etf=etf), make_schedule({}), cfg, "all_in_etf")
     assert results["etf_cop"].iloc[1] == pytest.approx(2_000.0)
 
 
@@ -101,7 +113,7 @@ def test_columns_add_up_to_wealth():
 
 
 def test_summary_of_growing_portfolio():
-    cfg = make_cfg(etf_weight=0.0)
+    cfg = make_cfg(cdt_weight=1.0)
     results = run_backtest(make_panel(cfg, fic=0.12, cdt_180=0.12), make_schedule({}), cfg)
     s = summary(results)
     assert s["annual_return"] == pytest.approx(0.12)
@@ -111,7 +123,7 @@ def test_summary_of_growing_portfolio():
 
 
 def test_summary_counts_shortfalls_and_payments_are_not_losses():
-    cfg = make_cfg()
+    cfg = make_cfg(cdt_weight=1.0)
     uvr = [1.0] * 7 + [2.0] * 6
     results = run_backtest(make_panel(cfg, uvr=uvr), make_schedule({7: 100.0}), cfg)
     s = summary(results)

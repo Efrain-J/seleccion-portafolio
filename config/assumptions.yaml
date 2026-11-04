@@ -23,8 +23,8 @@ inflation_scenarios:
   high_shock_pp: 3.0           # high = base + 3 pp
   low_shock_pp: -1.5           # low = base - 1.5 pp
 
-conservative:                  # Plan 1: FIC (liquidity) + CDT (rest) + small ETF share
-  etf_weight: 0.10             # share of the money left after the liquidity that goes to the ETF
+conservative:                  # Plan 1: FIC (liquidity + a share of the rest) + CDT; no ETF
+  cdt_weight: 0.90             # share of the money left after the liquidity that goes to the CDT (the rest stays in the FIC)
   fic_sizing_scenario: high    # inflation scenario used to size the FIC
 
 data:

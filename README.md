@@ -85,10 +85,10 @@ Print the conservative allocation (Plan 1) at t0:
 .venv\Scripts\python -m uvr_loan.portfolio
 ```
 
-Plan 1 keeps in the FIC the payments due before its new CDT matures (high inflation scenario; the CDT pays the payment
-of the month it matures), puts `conservative.etf_weight` of the rest in the ETF and the remainder in a CDT that matures
-at the next review. Every
-parameter (t0, review frequency, ETF weight, inflation scenarios, data series) is read from
+Plan 1 (fixed income only) keeps in the FIC the payments due before its new CDT matures (high inflation scenario; the
+CDT pays the payment of the month it matures), puts `conservative.cdt_weight` of the rest in a CDT that matures at the
+next review, and leaves the remainder in the FIC. Every
+parameter (t0, review frequency, CDT weight, inflation scenarios, data series) is read from
 `config/assumptions.yaml`. Plan 2 (CDT ladder) buys fixed-rate CDTs of 3, 6 and 12 months chosen with a linear
 program in UVR that covers every remaining payment and maximizes the final wealth; the decision uses expected real
 returns, and the results use the observed CDT rates. Every reported peso comes from observed data. The base inflation of the

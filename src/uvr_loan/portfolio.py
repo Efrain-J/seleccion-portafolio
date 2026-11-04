@@ -1,8 +1,8 @@
 """Portfolio selection rules.
 
-Plan 1 (conservative): the FIC holds the payments due before the next review,
-the ETF a fixed share of the rest, and the remainder goes to a CDT that matures
-at the next review. Run `python -m uvr_loan.portfolio` to print the allocation at t0.
+Plan 1 (conservative): the FIC holds the payments due before the new CDT matures
+plus a fixed share of the rest, and the remainder goes to a CDT that matures at the
+next review. There is no ETF. Run `python -m uvr_loan.portfolio` to print the allocation at t0.
 
 Plan 2 (CDT ladder): a ladder of fixed-rate CDTs chosen with a linear program in UVR
 that covers every remaining payment and maximizes the final wealth, using the expected
@@ -25,16 +25,17 @@ from uvr_loan.inflation import scenarios
 def conservative_allocation(
     free_cop: float, payments_cop: Sequence[float], params: dict[str, Any]
 ) -> dict[str, float]:
-    """Split the free money into FIC, CDT and ETF (COP).
+    """Split the free money between FIC and CDT (COP).
 
-    `uncovered_cop` is the part of the projected payments that the free money cannot cover
-    (it is not a shortfall: shortfalls are only recorded when a payment is due).
+    The FIC holds the projected payments plus (1 - `cdt_weight`) of what is left; the CDT
+    takes `cdt_weight` of what is left. `uncovered_cop` is the part of the projected payments
+    that the free money cannot cover (it is not a shortfall: shortfalls are only recorded
+    when a payment is due).
     """
     needed = float(sum(payments_cop))
-    fic = min(needed, free_cop)
-    rest = free_cop - fic
-    etf = params["etf_weight"] * rest
-    return {"fic_cop": fic, "cdt_cop": rest - etf, "etf_cop": etf, "uncovered_cop": needed - fic}
+    liquidity = min(needed, free_cop)
+    cdt = params["cdt_weight"] * (free_cop - liquidity)
+    return {"fic_cop": free_cop - cdt, "cdt_cop": cdt, "uncovered_cop": needed - liquidity}
 
 
 def ladder_purchases(

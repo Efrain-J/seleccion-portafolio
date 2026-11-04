@@ -3,7 +3,7 @@ import pytest
 
 from uvr_loan.portfolio import conservative_allocation, ladder_purchases
 
-PARAMS = {"etf_weight": 0.10}
+PARAMS = {"cdt_weight": 0.90}
 
 
 LP_CFG = {"backtest": {"horizon_months": 12, "review_every_months": 6}}
@@ -18,17 +18,18 @@ WINDOW = {m: 10.0 for m in range(7, 13)}  # 10 UVR in each month of the window (
 
 
 def test_no_payments_during_grace():
+    """Without payments, the CDT takes cdt_weight of the money and the FIC the rest; there is no ETF."""
     alloc = conservative_allocation(760e6, [0.0] * 6, PARAMS)
-    assert alloc["fic_cop"] == 0
-    assert alloc["etf_cop"] == pytest.approx(76e6)
+    assert alloc["fic_cop"] == pytest.approx(76e6)
     assert alloc["cdt_cop"] == pytest.approx(684e6)
     assert alloc["uncovered_cop"] == 0
+    assert "etf_cop" not in alloc
 
 
-def test_fic_covers_next_payments():
+def test_fic_covers_next_payments_and_keeps_the_rest_of_its_share():
     alloc = conservative_allocation(500e6, [5e6] * 6, PARAMS)
-    assert alloc["fic_cop"] == pytest.approx(30e6)
-    assert alloc["etf_cop"] == pytest.approx(0.10 * 470e6)
+    assert alloc["fic_cop"] == pytest.approx(30e6 + 0.10 * 470e6)
+    assert alloc["cdt_cop"] == pytest.approx(0.90 * 470e6)
 
 
 @pytest.mark.parametrize(
@@ -37,15 +38,14 @@ def test_fic_covers_next_payments():
 )
 def test_allocation_adds_up_and_is_non_negative(wealth, payments):
     alloc = conservative_allocation(wealth, payments, PARAMS)
-    assert alloc["fic_cop"] + alloc["cdt_cop"] + alloc["etf_cop"] == pytest.approx(wealth)
-    assert min(alloc["fic_cop"], alloc["cdt_cop"], alloc["etf_cop"]) >= 0
+    assert alloc["fic_cop"] + alloc["cdt_cop"] == pytest.approx(wealth)
+    assert min(alloc["fic_cop"], alloc["cdt_cop"]) >= 0
 
 
 def test_shortfall_when_payments_exceed_wealth():
     alloc = conservative_allocation(10e6, [8e6, 8e6], PARAMS)
     assert alloc["fic_cop"] == pytest.approx(10e6)
     assert alloc["cdt_cop"] == 0
-    assert alloc["etf_cop"] == 0
     assert alloc["uncovered_cop"] == pytest.approx(6e6)
 
 

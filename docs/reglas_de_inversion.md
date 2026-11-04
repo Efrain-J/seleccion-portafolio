@@ -34,9 +34,9 @@ $\tau$ es un dato conocido al cierre del mes $\tau$. El orden dentro de un mes e
 | $\bar r^{\text{FIC}}_m$ | La misma, anualizada: conocida al cierre del mes $m$, se usa para decidir | decimal E.A. | columna `fic_rate_ea` |
 | $r_j(\tau)$ | Tasa observada del CDT de plazo $j$ meses comprado en $\tau$ ($j$ = 3, 6, 12: DTF, CDT 180 y 360 días) | decimal E.A. | columnas `cdt_90d_ea`, `cdt_180d_ea`, `cdt_360d_ea` |
 | $F_m$ | Saldo del FIC al cierre del mes $m$ (después de crecer, recibir lo que vence y pagar) | COP | columna `fic_cop` |
-| $W$ | Dinero libre en $\tau$: FIC + ETF a precio de mercado (lo que vence en $\tau$ ya está en el FIC) | COP | variable `free_cop` |
+| $W$ | Dinero libre en $\tau$: FIC + ETF a precio de mercado (lo que vence en $\tau$ ya está en el FIC; los planes actuales no tienen ETF) | COP | variable `free_cop` |
 | $L$ | Necesidad de liquidez del plan 1 en $\tau$ | COP | función `projected_payments_cop` |
-| $w$ | Peso del ETF sobre $W - L$ (plan 1: 0,10) | decimal | YAML `conservative.etf_weight` |
+| $w$ | Plan 1: parte de $W - L$ que va al CDT (0,90); el resto queda en el FIC | decimal | YAML `conservative.cdt_weight` |
 | $D_m$ | Déficit del mes $m$: parte del pago que el FIC no cubre | COP | columna `shortfall_cop` |
 
 **Escenarios de inflación.** En cada $\tau$ hay tres: base $=\pi^{\text{base}}_\tau$, alto
@@ -111,16 +111,16 @@ donde $F^{-}_m$ es el saldo del FIC en el mes $m$ después de crecer y recibir l
 
 ## Plan 1 – Conservador
 
-Es una regla fija, no una optimización. No usa rentabilidades esperadas, volatilidades ni el indicador de cobertura:
-sirve como punto de comparación para los planes más elaborados.
+Es una regla fija, no una optimización, y solo usa renta fija: FIC y CDT, sin renta variable (como el perfil
+conservador del plan del proyecto). No usa rentabilidades esperadas, volatilidades ni el indicador de cobertura: sirve
+como punto de comparación para los planes más elaborados.
 
 ### Instrumentos
 
 | Instrumento | Rol | Dato que se usa |
 |---|---|---|
-| **FIC a la vista** | Liquidez: de aquí salen las cuotas | Índice de FIC de mercado monetario (Superfinanciera) |
+| **FIC a la vista** | Liquidez para las cuotas y una parte fija del resto | Índice de FIC de mercado monetario (Superfinanciera) |
 | **CDT a 180 días** | Renta fija; vence justo en la siguiente revisión | $r_6(\tau)$: tasa observada del CDT a 180 días del mes de compra |
-| **ETF iShares COLCAP** (`ICOLCAP`) | Porción pequeña en renta variable para crecimiento | Precio ajustado por dividendos |
 
 Las fuentes de cada serie están en [`data/SOURCES.md`](../data/SOURCES.md).
 
@@ -133,7 +133,7 @@ oct-2016, abr-2017, oct-2017, …, abr-2026.
 
 **1. Cuánto dinero libre hay ($W$)**
 
-$W$ = saldo del FIC (que ya incluye el CDT que vence ese mes) + valor del ETF a precio de mercado.
+$W$ = saldo del FIC, que ya incluye el CDT que vence ese mes.
 
 En $t_0$, $W$ = 760.000.000 COP (`initial_capital_cop`).
 
@@ -152,9 +152,8 @@ con la UVR proyectada al escenario **alto** (`conservative.fic_sizing_scenario`;
 
 | Instrumento | Monto |
 |---|---|
-| FIC | $L$ |
-| ETF | $w\,(W - L)$, con $w$ = 10 % hoy |
-| CDT | el resto: $(1 - w)(W - L)$ |
+| CDT | $w\,(W - L)$, con $w$ = 90 % hoy |
+| FIC | el resto: $L + (1 - w)(W - L)$ |
 
 Si los pagos proyectados superan el dinero libre ($L > W$), todo va al FIC; la parte que no alcanza solo se convierte
 en déficit $D_m$ si al llegar el pago el FIC no lo cubre.
@@ -163,25 +162,25 @@ en déficit $D_m$ si al llegar el pago el FIC no lo cubre.
 
 - El FIC crece con su rentabilidad realizada del mes: $F^{-}_m = F_{m-1}\,(1 + r^{\text{FIC}}_m)$ más lo que vence.
 - El CDT crece a la tasa fijada al comprarlo: $\bigl(1 + r_6(\tau)\bigr)^{1/12}$ por mes.
-- El ETF vale las unidades compradas por su precio del mes.
 - Se paga la cuota del mes en COP, $P_m\,\text{UVR}_m$ (con la UVR **observada**), sacándola del FIC. Lo que falte es
   el déficit $D_m$.
 
 En la siguiente revisión el CDT vence, entra al FIC, paga el pago de ese mes y lo que queda forma el nuevo $W$. Así el
-ETF vuelve al 10 % y el FIC se ajusta a los pagos que vienen.
+FIC se ajusta a los pagos que vienen y el CDT vuelve a ser el 90 % del resto.
 
 ### Ejemplos (backtest con datos reales)
 
-| Revisión | $W$ | $L$ (pagos de los próximos 5 meses) | FIC | CDT | ETF |
-|---|---|---|---|---|---|
-| oct-2016 (gracia) | 760,0M | 0 | 0 | 684,0M | 76,0M |
-| oct-2019 (antes de la primera cuota) | 906,5M | 27,9M | 27,9M | 790,7M | 87,9M |
+| Revisión | $W$ | $L$ (pagos de los próximos 5 meses) | FIC | CDT |
+|---|---|---|---|---|
+| oct-2016 (gracia) | 760,0M | 0 | 76,0M | 684,0M |
+| oct-2019 (antes de la primera cuota) | 895,2M | 28,0M | 114,7M | 780,5M |
 
 ### Riesgo
 
-Con la regla $n - 1$ el FIC queda casi vacío justo antes de que venza el CDT: el saldo mínimo en un mes de pago fue
-57.601 COP. No hubo déficit en el backtest, pero el margen frente a una inflación mayor que el escenario alto es
-pequeño en esos meses (mar y sep de 2020–2022 y mar-2026).
+El 10 % que queda en el FIC además de $L$ funciona como colchón: el saldo mínimo del FIC en un mes de pago fue
+71,4M, y no hubo déficit. A cambio, ese dinero rinde lo del FIC y no lo del CDT. Con el 10 % en ETF (versión anterior
+del plan) la riqueza final fue 734,8M frente a 696,9M ahora: la diferencia viene sobre todo de 2025, cuando ICOLCAP
+subió 39 %, algo que no se sabía en 2016.
 
 ### Simplificaciones propias del plan 1
 
@@ -191,7 +190,7 @@ pequeño en esos meses (mar y sep de 2020–2022 y mar-2026).
 ### Qué decide la regla y qué no
 
 - **Dónde invertir:** los tres instrumentos son fijos, elegidos de antemano. La regla no compara alternativas.
-- **Cuánto:** lo fijan solo los pagos próximos (FIC) y `etf_weight` (ETF). El 10 % es una elección, no el resultado
+- **Cuánto:** lo fijan solo los pagos próximos (FIC) y `cdt_weight` (CDT). El 90 % es una elección, no el resultado
   de un cálculo.
 
 ## Plan 2 – Escalera de CDT optimizada
