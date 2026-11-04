@@ -1,4 +1,5 @@
-# Problem parameters and modeling assumptions (S1–S8).
+# Problem parameters and modeling assumptions (S1–S15, see docs/reglas_de_inversion.md).
+# Naming: money ends in _cop or _uvr; rates are decimals ending in _ea (effective annual) or _m (monthly).
 
 initial_capital_cop: 760_000_000
 
@@ -7,22 +8,43 @@ loan:
   term_months: 120
   annual_rate: 0.10            # UVR + 10% effective annual
   grace_months: 36             # S1: full grace, interest is capitalized
-  prepayments_uvr:             # S5: agreed upfront, term and payment stay fixed
+  prepayments_uvr:             # S5: agreed upfront, term and payment stay fixed; keys are months
     48: 50_000                 # S7: end of year 4
     60: 50_000                 # S7: end of year 5
 
 backtest:
-  t0: 2016-10                  # S4: historical start date
+  t0: 2016-10                  # S4: historical start date (month 0)
   horizon_months: 120
-  rebalance_every: 6           # S8: dynamic strategy re-estimation frequency (months)
-  rebalance_sensitivity: [3, 6, 12]
+  review_every_months: 6       # S8: k, months between reviews of the portfolio
+  review_sensitivity_months: [3, 6, 12]
 
 inflation_scenarios:
+  base_lookback_months: 6      # S14: base = annualized UVR inflation of the last 6 months (placeholder model)
   high_shock_pp: 3.0           # high = base + 3 pp
   low_shock_pp: -1.5           # low = base - 1.5 pp
 
-rules:
-  zero_shortfall: true         # S2: cash must cover every payment
-  min_funding_ratio: 1.10      # cut risk below this level
-  taxes: false                 # S3
-  transaction_costs: false     # S6
+conservative:                  # Plan 1: FIC (liquidity + a share of the rest) + CDT; no ETF
+  cdt_weight: 0.90             # share of the money left after the liquidity that goes to the CDT (the rest stays in the FIC)
+  grace_cdt_weight: 1.0        # cdt_weight at the reviews of the grace period (no payments yet)
+  fic_sizing_scenario: high    # inflation scenario used to size the FIC
+
+data:
+  start: "2016-01-01"          # first day of the FIC data (Superfinanciera)
+  end: "2026-11-30"
+  etf_ticker: ICOLCAP.CL       # Yahoo Finance, iShares COLCAP (COP)
+  uvr_series: 850              # BanRep SUAMECA series ID, daily COP per UVR
+  cdt_series:                  # panel column: SUAMECA ID (weekly, % effective annual; the panel keeps decimals)
+    cdt_90d_ea: 65             # DTF series = 90-day CDT rate
+    cdt_180d_ea: 67
+    cdt_360d_ea: 68
+  fic_source:                  # FIC returns: index of real money market funds (S10)
+    dataset: qhpu-8ixx         # Superfinanciera on datos.gov.co, daily unit values
+    subtype: FIC DE MERCADO MONETARIO
+    max_daily_change: 0.05     # fund-days with a larger change (or a unit value <= 0) are logged and excluded
+
+cdt_ladder:                    # Plan 2: ladder of fixed-rate CDTs chosen with an LP in UVR
+  deflator_scenario: base      # inflation that turns nominal rates (CDT and FIC) into expected real ones
+  term_columns:                # CDT term in months: panel column with its rate
+    3: cdt_90d_ea
+    6: cdt_180d_ea
+    12: cdt_360d_ea

@@ -17,3 +17,4 @@ __pycache__/
 plan_proyecto_credito_uvr.md
 data/raw/
 data/processed/
+.coverage
