@@ -32,7 +32,7 @@ El tiempo se cuenta en **meses** desde $t_0$. Por eso la revisión siguiente a $
 | $W$ | Riqueza en $\tau$: FIC + CDT + ETF a precio de mercado | COP | `wealth` |
 | $L$ | Necesidad de liquidez en $\tau$ | COP | `projected_payments_cop` |
 | $w$ | Peso del ETF sobre $W - L$ (plan 1: 0,10) | decimal | `conservative.equity_weight` |
-| $r^{\text{FIC}}_m$ | Rentabilidad anual del FIC en el mes $m$ (DTF a 90 días) | decimal E.A. | panel, columna `fic` |
+| $r^{\text{FIC}}_m$ | Rentabilidad del FIC en el mes $m$: índice de los FIC de mercado monetario (Superfinanciera); realizada en el mes para el resultado y anualizada para decidir | decimal | panel, columnas `fic_return` y `fic` |
 | $r^{\text{CDT}}_\tau$ | Tasa anual del CDT comprado en $\tau$ (CDT a 180 días) | decimal E.A. | panel, columna `cdt_180` |
 | $D_m$ | Déficit del mes $m$: parte del pago que el FIC no cubre | COP | `shortfall` |
 
@@ -80,7 +80,8 @@ $$
   comienzo de año y en octubre los de inflación baja.
 - **Déficit (S9):** si el FIC no alcanza para un pago, se registra el déficit y no se hace nada más: no se vende ETF
   ni se redime un CDT antes del vencimiento.
-- **FIC (S10):** su rentabilidad se aproxima con la DTF a 90 días.
+- **FIC (S10):** rinde lo que rindió un índice de los FIC de mercado monetario reales: el valor de la unidad de cada
+  fondo, publicado a diario por la Superfinanciera, promediado según el tamaño de cada fondo. Ver `data/SOURCES.md`.
 - **Sin costos ni impuestos (S3, S6):** comprar, vender y rebalancear no cuesta nada.
 
 ## Plan 1 – Conservador
@@ -92,7 +93,7 @@ sirve como punto de comparación para los planes más elaborados.
 
 | Instrumento | Rol | Dato que se usa |
 |---|---|---|
-| **FIC a la vista** | Liquidez: de aquí salen las cuotas | DTF a 90 días (supuesto: aproxima la rentabilidad de un FIC) |
+| **FIC a la vista** | Liquidez: de aquí salen las cuotas | Índice de FIC de mercado monetario (Superfinanciera) |
 | **CDT a 180 días** | Renta fija; vence justo en la siguiente revisión | Tasa de CDT a 180 días del mes de compra |
 | **ETF iShares COLCAP** (`ICOLCAP`) | Porción pequeña en renta variable para crecimiento | Precio ajustado por dividendos |
 
@@ -174,7 +175,7 @@ rinden sus tasas **reales** del BanRep; solo la decisión usa la inflación espe
 | **CDT a 3 meses** | Escalera | DTF a 90 días del mes de compra (serie 65) |
 | **CDT a 6 meses** | Escalera | CDT a 180 días del mes de compra (serie 67) |
 | **CDT a 12 meses** | Escalera | CDT a 360 días del mes de compra (serie 68) |
-| **FIC a la vista** | Caja para los pagos que caen antes del siguiente vencimiento | DTF a 90 días |
+| **FIC a la vista** | Caja para los pagos que caen antes del siguiente vencimiento | Índice de FIC de mercado monetario (Superfinanciera) |
 
 ### Cómo se decide en cada revisión $\tau$
 
@@ -215,20 +216,32 @@ $$
 
 | Revisión | Dinero libre | FIC | CDT 3 meses | CDT 6 meses | CDT 12 meses |
 |---|---|---|---|---|---|
-| oct-2016 (gracia) | 760,0M | 0 | 0 | 0 | 760,0M |
-| oct-2019 (antes de la primera cuota) | 886,8M | 11,0M | 16,5M | 186,6M | 672,8M |
+| oct-2016 (gracia) | 760,0M | 0 | 0 | 164,5M | 595,5M |
+| oct-2019 (antes de la primera cuota) | 711,3M | 11,0M | 16,5M | 12,3M | 671,5M |
 
-En oct-2016 las tasas eran 6,99 % (90 días), 7,24 % (180) y 8,18 % (360): sin pagos durante la gracia, todo va al
-plazo más largo.
+En oct-2016 las tasas eran 6,99 % (90 días), 7,24 % (180) y 8,18 % (360): sin pagos durante la gracia, casi todo va al
+plazo más largo. En oct-2019 el dinero libre es menor que la riqueza total porque hay CDT comprados antes que siguen
+vivos.
 
 ### Riesgo
 
 Los CDT son de tasa fija: si la inflación supera la esperada, los pagos en COP crecen más que el dinero. Con la
-inflación base, el backtest tiene 9 meses con déficit (1,85M COP en total); los mayores son sep-2025 (0,56M) y
-sep-2026 (0,83M). En abr-2025 y abr-2026 no hubo escalera posible y el dinero quedó en el FIC.
+inflación base, el backtest tiene 9 meses con déficit (1,18M COP en total); el mayor es sep-2026 (0,70M). En
+abr-2026 no hubo escalera posible y el dinero quedó en el FIC.
 
 ### Simplificaciones propias del plan 2
 
 - Los CDT se compran a la tasa promedio del mercado de su plazo (no a la de un banco concreto), por cualquier monto,
   solo en las revisiones, y se mantienen hasta el vencimiento.
+- **Pronóstico de la caja (S15):** para decidir, el LP supone que el FIC seguirá rindiendo, durante todo el horizonte,
+  lo mismo que rindió el último mes, anualizado (columna `fic` en $\tau$). Así obtiene $\rho_\tau$ y lo compara con
+  los CDT. Como la caja y los CDT se descuentan con la misma inflación, preferir la caja depende solo de comparar
+  esa tasa con la de los CDT del día. Evaluado contra lo que pasó en los 6 meses siguientes a cada revisión:
+  - acierta en 17 de 20 revisiones cuál rinde más, la caja o el CDT a 180 días. Falla en abr-2020 (prácticamente un
+    empate) y en abr-2022 y oct-2022, cuando el BanRep subía tasas y el FIC, que sigue las tasas mes a mes, le ganó a
+    los CDT comprados a la tasa anterior;
+  - el error absoluto medio del rendimiento nominal del FIC es 1,29 p.p. y tiende a subestimarlo (−0,78 p.p. en
+    promedio) cuando las tasas suben; el mayor error fue 5,87 p.p. en oct-2022;
+  - el error de $\rho_\tau$ (real) es mayor, 2,30 p.p. en promedio, y viene sobre todo de la inflación base (S14), no
+    del FIC.
 - Además aplican los supuestos comunes.

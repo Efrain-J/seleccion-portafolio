@@ -1,8 +1,8 @@
 """Monthly backtest of the investment plans with dynamic reviews every k months.
 
-Each month (S12): the FIC grows at last month's rate, the CDTs that mature move to the
-FIC, and then the loan payment is taken from the FIC (what is missing is recorded as
-shortfall, nothing is sold: S9). At each review the free money (FIC + ETF) is
+Each month (S12): the FIC grows with the realized return of the FIC index, the CDTs that
+mature move to the FIC, and then the loan payment is taken from the FIC (what is missing is
+recorded as shortfall, nothing is sold: S9). At each review the free money (FIC + ETF) is
 reallocated by the plan's strategy; live CDTs are held to maturity (S13).
 
 Run `python -m uvr_loan.backtest` to write the results of every plan to results/.
@@ -109,7 +109,7 @@ def run_backtest(
         row = panel.loc[month_to_period(bt["t0"], m)]
         payment = shortfall = 0.0
         if m > 0:
-            fic *= (1 + panel.loc[month_to_period(bt["t0"], m - 1), "fic"]) ** (1 / 12)
+            fic *= 1 + row["fic_return"]  # realized return of the FIC index in month m
             fic += sum(lot_value(lot, m) for lot in lots if lot["matures"] == m)
             lots = [lot for lot in lots if lot["matures"] != m]
             payment = payments_uvr.get(m, 0.0) * row["uvr"]

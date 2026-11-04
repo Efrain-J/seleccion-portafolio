@@ -33,18 +33,22 @@ conservative:                  # Plan 1: FIC (liquidity) + CDT (rest) + small ET
   liquidity_scenario: high     # inflation scenario used to size the FIC
 
 data:
-  start: "2015-01-01"
+  start: "2016-01-01"           # first day of the FIC data (Superfinanciera)
   end: "2026-11-30"
   etf_ticker: ICOLCAP.CL       # Yahoo Finance, iShares COLCAP (COP)
   uvr_series: 850              # BanRep SUAMECA series ID, daily COP per UVR
   rate_series:                 # SUAMECA IDs, weekly, % effective annual
+    cdt_90: 65                 # DTF = 90-day CDT rate
     cdt_180: 67
     cdt_360: 68
-    fic: 65                    # DTF 90 days, proxy for FIC returns
+  fic_funds:                   # FIC returns: index of real money market funds (S10)
+    dataset: qhpu-8ixx         # Superfinanciera on datos.gov.co, daily unit values
+    subtype: FIC DE MERCADO MONETARIO
+    max_daily_change: 0.05     # fund-days with a larger change (or a unit value <= 0) are logged and excluded
 
 cdt_ladder:                    # Plan 2: ladder of fixed-rate CDTs chosen with an LP in UVR
   liquidity_scenario: base     # inflation that turns nominal rates (CDT and FIC) into expected real ones
   terms:                       # CDT term in months: panel column with its rate
-    3: fic                     # DTF = 90-day CDT rate
+    3: cdt_90
     6: cdt_180
     12: cdt_360

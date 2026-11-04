@@ -28,6 +28,7 @@ def make_panel(cfg, uvr=1.0, fic=0.0, cdt_180=0.0, etf=100.0, cdt_90=0.0, cdt_36
     start = pd.Period(bt["t0"], "M") - HISTORY
     months = pd.period_range(start, periods=HISTORY + bt["horizon_months"] + 1, freq="M")
     columns = {"uvr": uvr, "cdt_180": cdt_180, "fic": fic, "etf": etf, "cdt_90": cdt_90, "cdt_360": cdt_360}
+    columns["fic_return"] = (1 + fic) ** (1 / 12) - 1  # `fic` is an annual rate (scalar) in these tests
     padded = {name: [v[0]] * HISTORY + list(v) if isinstance(v, list) else v for name, v in columns.items()}
     return pd.DataFrame(padded, index=months)
 

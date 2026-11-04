@@ -70,7 +70,8 @@ Download the market data and build the monthly panel (end of month, rates as dec
 | `uvr` | BanRep SUAMECA, series 850 | COP per UVR, daily |
 | `cdt_180` | BanRep SUAMECA, series 67 | CDT 180 days, weekly, effective annual |
 | `cdt_360` | BanRep SUAMECA, series 68 | CDT 360 days, weekly, effective annual |
-| `fic` | BanRep SUAMECA, series 65 | DTF 90 days: 90-day CDT rate and proxy for FIC returns |
+| `cdt_90` | BanRep SUAMECA, series 65 | DTF: 90-day CDT rate, weekly, effective annual |
+| `fic_index`, `fic_return`, `fic` | Superfinanciera on datos.gov.co (`qhpu-8ixx`) | Index of the money market FICs (daily unit values, size-weighted); `fic_return` is the return realized in the month, `fic` that return annualized |
 | `etf` | Yahoo Finance, `ICOLCAP.CL` | iShares COLCAP, adjusted close in COP |
 
 Endpoints, units, assumptions and known issues of every source are in [`data/SOURCES.md`](data/SOURCES.md).
