@@ -19,37 +19,47 @@ from uvr_loan.config import RESULTS_DIR, load_assumptions
 from uvr_loan.inflation import project_uvr, scenarios
 from uvr_loan.portfolio import conservative_allocation, ladder_purchases
 
-# A fixed-rate CDT lot: `units` COP bought in month `bought` at the annual `rate`, paid in `matures`.
+# A fixed-rate CDT lot: `principal_cop` bought in month `buy_month` at the annual `rate_ea`,
+# paid in `maturity_month`.
 Lot = dict[str, Any]
 
 
 def lot_value(lot: Lot, month: int) -> float:
     """Accrued value in COP of a lot at `month`."""
-    return lot["units"] * (1 + lot["rate"]) ** ((month - lot["bought"]) / 12)
+    return lot["principal_cop"] * (1 + lot["rate_ea"]) ** ((month - lot["buy_month"]) / 12)
 
 
 def conservative_strategy(
     tau: int,
     history: pd.DataFrame,
-    free: float,
+    free_cop: float,
     lots: list[Lot],
     payment_schedule: pd.DataFrame,
     cfg: dict[str, Any],
 ) -> tuple[float, float, list[Lot]]:
-    """Plan 1. Its CDT matures exactly at the next review, so no lot is alive at a review."""
-    params, k = cfg["conservative"], cfg["backtest"]["rebalance_every"]
+    """Plan 1. Its CDT matures exactly at the next review, so no lot is alive at a review.
+
+    The FIC holds the payments of months tau+1 .. tau+k-1: the CDT matures in month tau+k and
+    pays that month (S12).
+    """
+    params, k = cfg["conservative"], cfg["backtest"]["review_every_months"]
     row = history.iloc[-1]
-    inflation = scenarios(cfg, history["uvr"])[params["liquidity_scenario"]]
-    projected = projected_payments_cop(payment_schedule, tau, row["uvr"], inflation, k)
-    alloc = conservative_allocation(free, projected, params)
-    cdt = {"units": alloc["cdt"], "rate": row["cdt_180"], "bought": tau, "matures": tau + k}
-    return alloc["fic"], alloc["etf"], [cdt]
+    inflation = scenarios(cfg, history["uvr_cop"])[params["fic_sizing_scenario"]]
+    projected = projected_payments_cop(payment_schedule, tau, row["uvr_cop"], inflation, k - 1)
+    alloc = conservative_allocation(free_cop, projected, params)
+    cdt = {
+        "principal_cop": alloc["cdt_cop"],
+        "rate_ea": row["cdt_180d_ea"],
+        "buy_month": tau,
+        "maturity_month": tau + k,
+    }
+    return alloc["fic_cop"], alloc["etf_cop"], [cdt]
 
 
 def cdt_ladder_strategy(
     tau: int,
     history: pd.DataFrame,
-    free: float,
+    free_cop: float,
     lots: list[Lot],
     payment_schedule: pd.DataFrame,
     cfg: dict[str, Any],
@@ -57,51 +67,61 @@ def cdt_ladder_strategy(
     """Plan 2: ladder of fixed-rate CDTs from the LP in UVR.
 
     The LP decides with expected real returns: each nominal rate of tau (CDT terms and FIC)
-    deflated by the inflation of `liquidity_scenario`. Live lots enter as known maturities,
+    deflated by the inflation of `deflator_scenario`. Live lots enter as known maturities,
     converted to UVR with the projected UVR. If no ladder covers every payment, nothing is
     bought and the money stays in the FIC (S9 records the shortfalls).
     """
     params = cfg["cdt_ladder"]
-    terms = {int(j): column for j, column in params["terms"].items()}
+    terms = {int(j): column for j, column in params["term_columns"].items()}
     row = history.iloc[-1]
-    inflation = scenarios(cfg, history["uvr"])[params["liquidity_scenario"]]
+    inflation = scenarios(cfg, history["uvr_cop"])[params["deflator_scenario"]]
 
     def real(rate: float) -> float:
         return (1 + rate) / (1 + inflation) - 1
 
     maturities: dict[int, float] = {}
     for lot in lots:
-        uvr_then = project_uvr(row["uvr"], inflation, lot["matures"] - tau)[-1]
-        maturities[lot["matures"]] = (
-            maturities.get(lot["matures"], 0.0) + lot_value(lot, lot["matures"]) / uvr_then
-        )
-    real_rates = {j: real(row[column]) for j, column in terms.items()}
+        due = lot["maturity_month"]
+        uvr_then = project_uvr(row["uvr_cop"], inflation, due - tau)[-1]
+        maturities[due] = maturities.get(due, 0.0) + lot_value(lot, due) / uvr_then
+    cdt_real_ea = {j: real(row[column]) for j, column in terms.items()}
     try:
-        buy = ladder_purchases(
-            tau, free / row["uvr"], maturities, payment_schedule, cfg, real_rates, real(row["fic"])
+        buy_uvr = ladder_purchases(
+            tau,
+            free_cop / row["uvr_cop"],
+            maturities,
+            payment_schedule,
+            cfg,
+            cdt_real_ea,
+            real(row["fic_rate_ea"]),
         )
     except ValueError:
-        return free, 0.0, []
+        return free_cop, 0.0, []
     new = [
-        {"units": units * row["uvr"], "rate": row[terms[j]], "bought": tau, "matures": tau + j}
-        for j, units in buy.items()
-        if units > 0
+        {
+            "principal_cop": amount_uvr * row["uvr_cop"],
+            "rate_ea": row[terms[j]],
+            "buy_month": tau,
+            "maturity_month": tau + j,
+        }
+        for j, amount_uvr in buy_uvr.items()
+        if amount_uvr > 0
     ]
-    # The solver tolerance can spend a fraction of a peso more than `free`.
-    return max(free - sum(buy.values()) * row["uvr"], 0.0), 0.0, new
+    # The solver tolerance can spend a fraction of a peso more than `free_cop`.
+    return max(free_cop - sum(buy_uvr.values()) * row["uvr_cop"], 0.0), 0.0, new
 
 
-STRATEGIES = {"conservative": conservative_strategy, "cdt_ladder": cdt_ladder_strategy}
+PLANS = {"conservative": conservative_strategy, "cdt_ladder": cdt_ladder_strategy}
 
 
 def run_backtest(
-    panel: pd.DataFrame, payment_schedule: pd.DataFrame, cfg: dict[str, Any], strategy: str = "conservative"
+    panel: pd.DataFrame, payment_schedule: pd.DataFrame, cfg: dict[str, Any], plan: str = "conservative"
 ) -> pd.DataFrame:
     """One row per month 0..horizon with the payment, shortfall and value of each asset in COP."""
     bt = cfg["backtest"]
     reviews = set(decision_months(bt))
     payments_uvr = payment_schedule.set_index("month")["total_payment_uvr"]
-    allocate = STRATEGIES[strategy]
+    allocate = PLANS[plan]
 
     fic, etf_units, lots = float(cfg["initial_capital_cop"]), 0.0, []
     rows = []
@@ -109,34 +129,34 @@ def run_backtest(
         row = panel.loc[month_to_period(bt["t0"], m)]
         payment = shortfall = 0.0
         if m > 0:
-            fic *= 1 + row["fic_return"]  # realized return of the FIC index in month m
-            fic += sum(lot_value(lot, m) for lot in lots if lot["matures"] == m)
-            lots = [lot for lot in lots if lot["matures"] != m]
-            payment = payments_uvr.get(m, 0.0) * row["uvr"]
+            fic *= 1 + row["fic_ret_m"]  # realized return of the FIC index in month m
+            fic += sum(lot_value(lot, m) for lot in lots if lot["maturity_month"] == m)
+            lots = [lot for lot in lots if lot["maturity_month"] != m]
+            payment = payments_uvr.get(m, 0.0) * row["uvr_cop"]
             shortfall = max(payment - fic, 0.0)
             fic -= payment - shortfall
 
         if m in reviews:
-            free = fic + etf_units * row["etf"]
+            free_cop = fic + etf_units * row["etf_price_cop"]
             history = panel.loc[: month_to_period(bt["t0"], m)]  # only data known at the review
-            fic, etf, new_lots = allocate(m, history, free, lots, payment_schedule, cfg)
-            etf_units = etf / row["etf"]
+            fic, etf, new_lots = allocate(m, history, free_cop, lots, payment_schedule, cfg)
+            etf_units = etf / row["etf_price_cop"]
             lots += new_lots
 
-        etf = etf_units * row["etf"]
+        etf = etf_units * row["etf_price_cop"]
         cdt = sum(lot_value(lot, m) for lot in lots)
         rows.append(
             {
                 "month": m,
                 "period": str(month_to_period(bt["t0"], m)),
-                "uvr": row["uvr"],
+                "uvr_cop": row["uvr_cop"],
                 "payment_cop": payment,
-                "shortfall": shortfall,
-                "fic": fic,
-                "cdt": cdt,
-                "etf": etf,
-                "wealth": fic + cdt + etf,
-                "review": m in reviews,
+                "shortfall_cop": shortfall,
+                "fic_cop": fic,
+                "cdt_cop": cdt,
+                "etf_cop": etf,
+                "wealth_cop": fic + cdt + etf,
+                "is_review": m in reviews,
             }
         )
     return pd.DataFrame(rows)
@@ -144,14 +164,14 @@ def run_backtest(
 
 def summary(results: pd.DataFrame) -> dict[str, float]:
     """Shortfalls, liquidity and time-weighted return metrics (payments are not counted as losses)."""
-    paid = results["payment_cop"] - results["shortfall"]
-    monthly = ((results["wealth"] + paid) / results["wealth"].shift() - 1).iloc[1:]
+    paid = results["payment_cop"] - results["shortfall_cop"]
+    monthly = ((results["wealth_cop"] + paid) / results["wealth_cop"].shift() - 1).iloc[1:]
     growth = (1 + monthly).cumprod()
     return {
-        "shortfall_months": int((results["shortfall"] > 0).sum()),
-        "total_shortfall_cop": results["shortfall"].sum(),
-        "min_liquidity_cop": results.loc[results["payment_cop"] > 0, "fic"].min(),
-        "final_wealth_cop": results["wealth"].iloc[-1],
+        "shortfall_months": int((results["shortfall_cop"] > 0).sum()),
+        "total_shortfall_cop": results["shortfall_cop"].sum(),
+        "min_fic_at_payment_cop": results.loc[results["payment_cop"] > 0, "fic_cop"].min(),
+        "final_wealth_cop": results["wealth_cop"].iloc[-1],
         "annual_return": growth.iloc[-1] ** (12 / len(monthly)) - 1,
         "annual_volatility": monthly.std() * np.sqrt(12),
         "max_drawdown": (1 - growth / growth.cummax()).max(),
@@ -166,7 +186,7 @@ if __name__ == "__main__":
     RESULTS_DIR.mkdir(exist_ok=True)
 
     metrics = {}
-    for name in STRATEGIES:
+    for name in PLANS:
         results = run_backtest(panel, payment_schedule, cfg, name)
         results.to_csv(RESULTS_DIR / f"backtest_{name}.csv", index=False)
         metrics[name] = summary(results)

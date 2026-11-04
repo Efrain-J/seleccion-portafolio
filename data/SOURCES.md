@@ -8,12 +8,12 @@ Series used by the model, where they come from and how they are used. Downloaded
 
 | Series | Panel column | Source | ID / ticker | Unit | Frequency | First date | Raw file |
 |---|---|---|---|---|---|---|---|
-| UVR | `uvr` | Banco de la República (SUAMECA) | 850 | COP per UVR | Daily | 2000-01-01 | `banrep_850.csv` |
-| CDT 180 days | `cdt_180` | Banco de la República (SUAMECA), with Superfinanciera data | 67 | % effective annual, base 365 | Weekly | 1993-07-16 | `banrep_67.csv` |
-| CDT 360 days | `cdt_360` | Banco de la República (SUAMECA), with Superfinanciera data | 68 | % effective annual, base 365 | Weekly | 1993-07-16 | `banrep_68.csv` |
-| DTF 90 days | `cdt_90` | Banco de la República (SUAMECA), with Superfinanciera data | 65 | % effective annual, base 365 | Weekly | 1984-01-20 | `banrep_65.csv` |
-| Money market FICs | `fic_index`, `fic_return`, `fic` | Superintendencia Financiera (datos.gov.co) | `qhpu-8ixx` | Unit value (COP) and fund size per fund and share class | Daily | 2016-01-01 | `sfc_qhpu-8ixx_money_market.csv` |
-| iShares COLCAP ETF | `etf` | Yahoo Finance | `ICOLCAP.CL` | COP, close adjusted for dividends | Daily (BVC trading days) | 2015-01-02 (requested range) | `yahoo_ICOLCAP.CL.csv` |
+| UVR | `uvr_cop` | Banco de la República (SUAMECA) | 850 | COP per UVR | Daily | 2000-01-01 | `banrep_850.csv` |
+| CDT 180 days | `cdt_180d_ea` | Banco de la República (SUAMECA), with Superfinanciera data | 67 | % effective annual, base 365 | Weekly | 1993-07-16 | `banrep_67.csv` |
+| CDT 360 days | `cdt_360d_ea` | Banco de la República (SUAMECA), with Superfinanciera data | 68 | % effective annual, base 365 | Weekly | 1993-07-16 | `banrep_68.csv` |
+| DTF 90 days | `cdt_90d_ea` | Banco de la República (SUAMECA), with Superfinanciera data | 65 | % effective annual, base 365 | Weekly | 1984-01-20 | `banrep_65.csv` |
+| Money market FICs | `fic_index`, `fic_ret_m`, `fic_rate_ea` | Superintendencia Financiera (datos.gov.co) | `qhpu-8ixx` | Unit value (COP) and fund size per fund and share class | Daily | 2016-01-01 | `sfc_qhpu-8ixx_money_market.csv` |
+| iShares COLCAP ETF | `etf_price_cop` | Yahoo Finance | `ICOLCAP.CL` | COP, close adjusted for dividends | Daily (BVC trading days) | 2015-01-02 (requested range) | `yahoo_ICOLCAP.CL.csv` |
 
 In the monthly panel (`src/uvr_loan/data/cleaning.py`) every series takes its last value of each calendar month, and
 the rates are converted from % to decimals.
@@ -62,12 +62,12 @@ Weighted average rate of 90-day CDTs. It is the rate of the 3-month CDTs of plan
   the index uses no future information and does not depend on picking a fund that survived (in Oct 2016 the six
   largest funds were Casa de Bolsa Liquidez, Fiduagraria FIC 600 and Confirenta, BTG Pactual, Davibank 1525 and
   Fiduaval Confianza Plus; only the last three still report in 2026).
-- **Data checks** (`fic_index` in `cleaning.py`): duplicated fund-day rows are dropped, and fund-days with a unit value
-  <= 0 or a daily change above `fic_funds.max_daily_change` (5 %) are excluded from the index. Each case is logged
+- **Data checks** (`build_fic_index` in `cleaning.py`): duplicated fund-day rows are dropped, and fund-days with a unit value
+  <= 0 or a daily change above `fic_source.max_daily_change` (5 %) are excluded from the index. Each case is logged
   with the fund, the date and the unit values. In the 2016–2026 download: 8 fund-days with a unit value of 0 and 5
   with jumps above 5 % (out of 54,614 rows).
-- Panel columns: `fic_index` (month-end level), `fic_return` (return realized during the month, used for the money)
-  and `fic` (that return annualized, known at the close of the month, used for decisions).
+- Panel columns: `fic_index` (month-end level), `fic_ret_m` (return realized during the month, used for the money)
+  and `fic_rate_ea` (that return annualized, known at the close of the month, used for decisions).
 
 ## Yahoo Finance
 

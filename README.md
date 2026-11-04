@@ -65,14 +65,17 @@ Download the market data and build the monthly panel (end of month, rates as dec
 .venv\Scripts\python -m uvr_loan.data.cleaning    # data/processed/monthly_panel.csv
 ```
 
+Naming: money ends in `_cop` or `_uvr`; rates are decimals ending in `_ea` (effective annual, known at the close of
+the month and used for decisions) or `_m` (realized during the month and used for the money).
+
 | Column | Source | Notes |
 |---|---|---|
-| `uvr` | BanRep SUAMECA, series 850 | COP per UVR, daily |
-| `cdt_180` | BanRep SUAMECA, series 67 | CDT 180 days, weekly, effective annual |
-| `cdt_360` | BanRep SUAMECA, series 68 | CDT 360 days, weekly, effective annual |
-| `cdt_90` | BanRep SUAMECA, series 65 | DTF: 90-day CDT rate, weekly, effective annual |
-| `fic_index`, `fic_return`, `fic` | Superfinanciera on datos.gov.co (`qhpu-8ixx`) | Index of the money market FICs (daily unit values, size-weighted); `fic_return` is the return realized in the month, `fic` that return annualized |
-| `etf` | Yahoo Finance, `ICOLCAP.CL` | iShares COLCAP, adjusted close in COP |
+| `uvr_cop` | BanRep SUAMECA, series 850 | COP per UVR, daily |
+| `cdt_90d_ea` | BanRep SUAMECA, series 65 | DTF: 90-day CDT rate, weekly, effective annual |
+| `cdt_180d_ea` | BanRep SUAMECA, series 67 | CDT 180 days, weekly, effective annual |
+| `cdt_360d_ea` | BanRep SUAMECA, series 68 | CDT 360 days, weekly, effective annual |
+| `etf_price_cop` | Yahoo Finance, `ICOLCAP.CL` | iShares COLCAP, adjusted close in COP |
+| `fic_index`, `fic_ret_m`, `fic_rate_ea` | Superfinanciera on datos.gov.co (`qhpu-8ixx`) | Index of the money market FICs (daily unit values, size-weighted): month-end level, return realized in the month, and that return annualized |
 
 Endpoints, units, assumptions and known issues of every source are in [`data/SOURCES.md`](data/SOURCES.md).
 
@@ -82,8 +85,9 @@ Print the conservative allocation (Plan 1) at t0:
 .venv\Scripts\python -m uvr_loan.portfolio
 ```
 
-Plan 1 keeps in the FIC the payments due before the next review (high inflation scenario), puts
-`conservative.equity_weight` of the rest in the ETF and the remainder in a CDT that matures at the next review. Every
+Plan 1 keeps in the FIC the payments due before its new CDT matures (high inflation scenario; the CDT pays the payment
+of the month it matures), puts `conservative.etf_weight` of the rest in the ETF and the remainder in a CDT that matures
+at the next review. Every
 parameter (t0, review frequency, ETF weight, inflation scenarios, data series) is read from
 `config/assumptions.yaml`. Plan 2 (CDT ladder) buys fixed-rate CDTs of 3, 6 and 12 months chosen with a linear
 program in UVR that covers every remaining payment and maximizes the final wealth; the decision uses expected real
@@ -91,21 +95,23 @@ returns, and the results use the observed CDT rates. Every reported peso comes f
 scenarios is the UVR inflation of the last `base_lookback_months` months known at each review. The full rules, with
 notation, examples and simplifications, are in [`docs/reglas_de_inversion.md`](docs/reglas_de_inversion.md).
 
-Run the dynamic backtest of every plan from t0 to the end of the horizon (reviews every `rebalance_every` months):
+Run the dynamic backtest of every plan from t0 to the end of the horizon (reviews every `review_every_months` months):
 
 ```
 .venv\Scripts\python -m uvr_loan.backtest
 ```
 
-It writes `results/backtest_<plan>.csv` for each plan (one row per month: payment in COP, shortfall, FIC, CDT, ETF and
-total wealth) and `results/summary.csv` with one column per plan (months with shortfall, minimum liquidity, final
-wealth, annualized time-weighted return and volatility, maximum drawdown). If the FIC cannot cover a payment, the
-shortfall is recorded and nothing is sold.
+It writes `results/backtest_<plan>.csv` for each plan (one row per month: `uvr_cop`, `payment_cop`, `shortfall_cop`,
+`fic_cop`, `cdt_cop`, `etf_cop`, `wealth_cop`, `is_review`) and `results/summary.csv` with one column per plan (months
+with shortfall, total shortfall, minimum FIC balance in a payment month, final wealth, annualized time-weighted return
+and volatility, maximum drawdown). If the FIC cannot cover a payment, the shortfall is recorded and nothing is sold.
+
+The notebook `notebooks/backtest_plans.ipynb` plots the wealth and the FIC liquidity of every plan and the real versus
+projected UVR.
 
 ## Architecture
 
-Target structure. So far `config.py`, `amortization.py`, `data/`, `inflation.py`, `cashflows.py`, `portfolio.py`,
-`backtest.py` and `tests/` exist.
+Current structure. Planned additions (diagnosis, stress tests, report figures) are listed in the project plan.
 
 ```
 .
@@ -115,9 +121,10 @@ Target structure. So far `config.py`, `amortization.py`, `data/`, `inflation.py`
 │   └── reglas_de_inversion.md  # Investment rules of each plan
 ├── data/
 │   ├── SOURCES.md            # Where every series comes from (versioned)
-│   ├── raw/                  # Download cache (UVR, CPI, TES curves, CDT rates, COLCAP, FIC)
-│   └── processed/            # Clean monthly series and payment_schedule_uvr.csv
-├── notebooks/                # Exploration and charts; they import uvr_loan
+│   ├── raw/                  # Download cache (UVR, CDT rates, ICOLCAP, FIC reports)
+│   └── processed/            # monthly_panel.csv and payment_schedule_uvr.csv
+├── notebooks/
+│   └── backtest_plans.ipynb  # Wealth, liquidity and UVR charts of every plan
 ├── pyproject.toml            # Package metadata and dependencies (numpy, pandas, scipy, ...)
 ├── src/uvr_loan/
 │   ├── config.py             # Loads assumptions.yaml
@@ -125,15 +132,10 @@ Target structure. So far `config.py`, `amortization.py`, `data/`, `inflation.py`
 │   ├── data/
 │   │   ├── sources.py        # Automatic data download with caching
 │   │   └── cleaning.py       # Builds the monthly data panel
-│   ├── inflation.py          # Inflation forecasts and base/high/low scenarios
-│   ├── cashflows.py          # Loan payments converted from UVR to COP (projected and realized)
-│   ├── diagnosis.py          # Present value of payments, required IRR, funding ratio, duration
-│   ├── assets.py             # Instruments: FIC, CDT, TES UVR, fixed-rate TES, equity
-│   ├── portfolio.py          # Dedicated (cash-flow matching) + surplus portfolios; allocation profiles
-│   ├── backtest.py           # Monthly simulation with reviews every k months, and summary metrics
-│   ├── scenarios.py          # Stress tests and sensitivity analysis
-│   └── plots.py              # Charts for the report
+│   ├── inflation.py          # Base inflation (last 6 months of the UVR), scenarios and projected UVR
+│   ├── cashflows.py          # Review months and loan payments converted from UVR to COP
+│   ├── portfolio.py          # Plan 1 rule (conservative_allocation) and plan 2 LP (ladder_purchases)
+│   └── backtest.py           # Monthly simulation of every plan (PLANS) and summary metrics
 ├── results/                  # Backtest outputs (CSV)
-├── reports/                  # Final report and figures
 └── tests/                    # pytest suite
 ```

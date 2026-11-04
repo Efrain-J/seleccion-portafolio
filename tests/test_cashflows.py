@@ -11,8 +11,8 @@ def test_decision_months_from_config(cfg):
 
 @pytest.mark.parametrize("k", [3, 6, 12])
 def test_decision_months_sensitivity(cfg, k):
-    assert k in cfg["backtest"]["rebalance_sensitivity"]
-    months = decision_months({**cfg["backtest"], "rebalance_every": k})
+    assert k in cfg["backtest"]["review_sensitivity_months"]
+    months = decision_months({**cfg["backtest"], "review_every_months": k})
     assert months[0] == 0
     assert months[-1] == 120 - k
     assert len(months) == 120 // k

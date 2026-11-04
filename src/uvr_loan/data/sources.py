@@ -116,21 +116,21 @@ def cached_table(path: Path, fetch: Callable[[], pd.DataFrame]) -> pd.DataFrame:
 
 def load_fic_funds(cfg: dict[str, Any]) -> pd.DataFrame:
     """Daily reports of the money market FICs between `data.start` and `data.end`."""
-    data, funds = cfg["data"], cfg["data"]["fic_funds"]
+    data, funds = cfg["data"], cfg["data"]["fic_source"]
     fetch = partial(fetch_money_market_fic, funds["dataset"], funds["subtype"], data["start"], data["end"])
     return cached_table(RAW_DIR / f"sfc_{funds['dataset']}_money_market.csv", fetch)
 
 
 def load_raw(cfg: dict[str, Any]) -> dict[str, pd.Series]:
-    """Every raw series in the config, by column name (uvr, rates, etf)."""
+    """Every raw series in the config, by panel column name (UVR, CDT rates, ETF price)."""
     data = cfg["data"]
-    banrep = {"uvr": data["uvr_series"], **data["rate_series"]}
+    banrep = {"uvr_cop": data["uvr_series"], **data["cdt_series"]}
     raw = {
         name: cached(RAW_DIR / f"banrep_{series_id}.csv", partial(fetch_banrep_series, series_id))
         for name, series_id in banrep.items()
     }
     ticker = data["etf_ticker"]
-    raw["etf"] = cached(
+    raw["etf_price_cop"] = cached(
         RAW_DIR / f"yahoo_{ticker}.csv", partial(fetch_yahoo_close, ticker, data["start"], data["end"])
     )
     return raw

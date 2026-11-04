@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from uvr_loan.data import sources
-from uvr_loan.data.cleaning import build_monthly_panel, fic_index, fic_rates, to_month_end
+from uvr_loan.data.cleaning import build_fic_index, build_monthly_panel, fic_returns, to_month_end
 from uvr_loan.data.sources import (
     cached,
     cached_table,
@@ -24,16 +24,16 @@ def test_to_month_end_takes_last_value():
 
 def test_panel_converts_rates_to_decimals():
     idx = pd.to_datetime(["2020-01-31", "2020-02-28"])
-    raw = {"uvr": pd.Series([270.0, 271.0], idx), "cdt_180": pd.Series([5.0, 6.0], idx)}
-    panel = build_monthly_panel(raw, rate_columns=["cdt_180"], start="2020-01", end="2020-02")
-    assert list(panel["cdt_180"]) == [0.05, 0.06]
-    assert list(panel["uvr"]) == [270.0, 271.0]
+    raw = {"uvr_cop": pd.Series([270.0, 271.0], idx), "cdt_180d_ea": pd.Series([5.0, 6.0], idx)}
+    panel = build_monthly_panel(raw, pct_columns=["cdt_180d_ea"], start="2020-01", end="2020-02")
+    assert list(panel["cdt_180d_ea"]) == [0.05, 0.06]
+    assert list(panel["uvr_cop"]) == [270.0, 271.0]
 
 
 def test_panel_detects_gaps():
-    raw = {"uvr": pd.Series([270.0, 272.0], pd.to_datetime(["2020-01-31", "2020-03-31"]))}
+    raw = {"uvr_cop": pd.Series([270.0, 272.0], pd.to_datetime(["2020-01-31", "2020-03-31"]))}
     with pytest.raises(ValueError, match="2020-02"):
-        build_monthly_panel(raw, rate_columns=[], start="2020-01", end="2020-03")
+        build_monthly_panel(raw, pct_columns=[], start="2020-01", end="2020-03")
 
 
 def test_cache_skips_download_when_file_exists(tmp_path):
@@ -87,7 +87,7 @@ def test_fic_index_weights_by_the_size_of_the_previous_day():
             ("2020-01-02", 20, 51.5, 1.0),  # +3 %, weight 300
         ]
     )
-    level = fic_index(data, max_daily_change=0.05)
+    level = build_fic_index(data, max_daily_change=0.05)
     assert level["2020-01-02"] == pytest.approx(1.025)
 
 
@@ -101,7 +101,7 @@ def test_fic_index_only_counts_a_fund_on_the_days_it_reports():
             ("2020-01-03", 20, 51.5, 100.0),
         ]
     )
-    level = fic_index(data, max_daily_change=0.05)
+    level = build_fic_index(data, max_daily_change=0.05)
     assert level["2020-01-02"] == pytest.approx(1.01)
     assert level["2020-01-03"] == pytest.approx(1.01 * 1.02)
 
@@ -116,7 +116,7 @@ def test_fic_index_logs_and_excludes_zero_unit_values(caplog):
         ]
     )
     with caplog.at_level("WARNING"):
-        level = fic_index(data, max_daily_change=0.05)
+        level = build_fic_index(data, max_daily_change=0.05)
     assert level["2020-01-02"] == pytest.approx(1.01)
     assert "unit value <= 0" in caplog.text
     assert "fund 1-10-800 on 2020-01-02" in caplog.text
@@ -132,7 +132,7 @@ def test_fic_index_logs_and_excludes_jumps_above_the_limit(caplog):
         ]
     )
     with caplog.at_level("WARNING"):
-        level = fic_index(data, max_daily_change=0.05)
+        level = build_fic_index(data, max_daily_change=0.05)
     assert level["2020-01-02"] == pytest.approx(1.01)
     assert "daily change above 5%" in caplog.text
     assert "+6.00%" in caplog.text
@@ -143,16 +143,16 @@ def test_fic_index_logs_and_drops_duplicated_rows(caplog):
         [("2020-01-01", 10, 100.0, 100.0), ("2020-01-01", 10, 100.0, 100.0), ("2020-01-02", 10, 101.0, 100.0)]
     )
     with caplog.at_level("WARNING"):
-        level = fic_index(data, max_daily_change=0.05)
+        level = build_fic_index(data, max_daily_change=0.05)
     assert level["2020-01-02"] == pytest.approx(1.01)
     assert "1 duplicated" in caplog.text
 
 
-def test_fic_rates_monthly_return_and_known_annual_rate():
+def test_fic_returns_monthly_return_and_known_annual_rate():
     level = pd.Series([1.0, 1.01, 1.0302], index=pd.period_range("2020-01", periods=3, freq="M"))
-    rates = fic_rates(level)
-    assert rates["fic_return"].iloc[1:].tolist() == pytest.approx([0.01, 0.02])
-    assert rates.loc[pd.Period("2020-03", "M"), "fic"] == pytest.approx(1.02**12 - 1)
+    rates = fic_returns(level)
+    assert rates["fic_ret_m"].iloc[1:].tolist() == pytest.approx([0.01, 0.02])
+    assert rates.loc[pd.Period("2020-03", "M"), "fic_rate_ea"] == pytest.approx(1.02**12 - 1)
 
 
 def test_socrata_pages_until_a_short_page(monkeypatch):

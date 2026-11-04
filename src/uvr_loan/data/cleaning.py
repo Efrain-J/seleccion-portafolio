@@ -24,15 +24,15 @@ def to_month_end(s: pd.Series) -> pd.Series:
 
 
 def build_monthly_panel(
-    raw: dict[str, pd.Series], rate_columns: Iterable[str], start: str, end: str
+    raw: dict[str, pd.Series], pct_columns: Iterable[str], start: str, end: str
 ) -> pd.DataFrame:
-    """One row per month between `start` and `end`; rates go from % to decimals.
+    """One row per month between `start` and `end`; the `pct_columns` go from % to decimals.
 
     Raises ValueError if any month is missing a value.
     """
     months = pd.period_range(start, end, freq="M")
     panel = pd.DataFrame({name: to_month_end(s) for name, s in raw.items()}).reindex(months)
-    for col in rate_columns:
+    for col in pct_columns:
         panel[col] = panel[col] / 100
 
     missing = panel[panel.isna().any(axis=1)]
@@ -56,7 +56,7 @@ def _log_rows(rows: pd.DataFrame, reason: str) -> None:
         )
 
 
-def fic_index(funds: pd.DataFrame, max_daily_change: float) -> pd.Series:
+def build_fic_index(funds: pd.DataFrame, max_daily_change: float) -> pd.Series:
     """Daily level of an index of real funds, starting at 1.
 
     Each day the index moves with the average return of the funds that report that day and
@@ -89,11 +89,12 @@ def fic_index(funds: pd.DataFrame, max_daily_change: float) -> pd.Series:
     return (1 + daily).cumprod().rename("value")
 
 
-def fic_rates(level: pd.Series) -> pd.DataFrame:
-    """From the month-end level of the FIC index: `fic_return`, the return realized during each
-    month (results), and `fic`, that return annualized, known at the close of the month (decisions)."""
+def fic_returns(level: pd.Series) -> pd.DataFrame:
+    """From the month-end level of the FIC index: `fic_ret_m`, the return realized during each
+    month (moves the money), and `fic_rate_ea`, that return annualized, known at the close of the
+    month (used for decisions)."""
     monthly = level.pct_change()
-    return pd.DataFrame({"fic_return": monthly, "fic": (1 + monthly) ** 12 - 1})
+    return pd.DataFrame({"fic_ret_m": monthly, "fic_rate_ea": (1 + monthly) ** 12 - 1})
 
 
 def load_monthly_panel(cfg: dict[str, Any]) -> pd.DataFrame:
@@ -101,9 +102,9 @@ def load_monthly_panel(cfg: dict[str, Any]) -> pd.DataFrame:
     data = cfg["data"]
     end = pd.Period(cfg["backtest"]["t0"], "M") + cfg["backtest"]["horizon_months"]
     raw = load_raw(cfg)
-    raw["fic_index"] = fic_index(load_fic_funds(cfg), data["fic_funds"]["max_daily_change"])
-    panel = build_monthly_panel(raw, data["rate_series"], data["start"][:7], str(end))
-    return panel.join(fic_rates(panel["fic_index"]))
+    raw["fic_index"] = build_fic_index(load_fic_funds(cfg), data["fic_source"]["max_daily_change"])
+    panel = build_monthly_panel(raw, data["cdt_series"], data["start"][:7], str(end))
+    return panel.join(fic_returns(panel["fic_index"]))
 
 
 if __name__ == "__main__":

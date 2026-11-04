@@ -4,82 +4,107 @@ Cómo se decide dónde y cuánto invertir en cada plan. Hoy existen el **plan 1 
 (escalera de CDT optimizada)**; el plan 3 se agregará aquí.
 
 **Criterio de los resultados:** las decisiones pueden usar estimaciones (por ejemplo, la inflación esperada), siempre
-con datos disponibles hasta $\tau$. El dinero reportado sale solo de rendimientos observados de instrumentos reales:
-tasas de CDT del BanRep, precios del ETF y la UVR. Ningún resultado es un límite ni usa un rendimiento supuesto.
+con datos conocidos en la fecha de la revisión. El dinero reportado sale solo de rendimientos observados de
+instrumentos reales: tasas de CDT del BanRep, el índice de FIC de la Superfinanciera, precios del ETF y la UVR. Ningún
+resultado es un límite ni usa un rendimiento supuesto.
 
 Código: `conservative_allocation` y `ladder_purchases` en `src/uvr_loan/portfolio.py`. Simulación:
-`src/uvr_loan/backtest.py` (una estrategia por plan). Parámetros: `config/assumptions.yaml`.
+`src/uvr_loan/backtest.py` (un plan por estrategia, en `PLANS`). Parámetros: `config/assumptions.yaml`.
 
 ## Notación
 
-El tiempo se cuenta en **meses** desde $t_0$. Por eso la revisión siguiente a $\tau$ es $\tau + k$, no $\tau + 1$.
+**Convención de tiempo.** El tiempo se cuenta en meses desde $t_0$ (oct-2016, mes 0). El mes $m$ va del cierre del
+mes $m-1$ al cierre del mes $m$; el pago $P_m$ y la $\text{UVR}_m$ son del cierre del mes $m$. Las revisiones son los
+meses $\tau = 0, k, 2k, \dots$, así que la siguiente a $\tau$ es $\tau + k$ (no $\tau + 1$). Todo símbolo con subíndice
+$\tau$ es un dato conocido al cierre del mes $\tau$. El orden dentro de un mes está en S12.
 
-| Símbolo | Significado | Unidad | En el código / YAML |
+| Símbolo | Significado | Unidad | En el código |
 |---|---|---|---|
-| $t_0$ | Fecha inicial del backtest (oct-2016); mes 0 | fecha | `backtest.t0` |
-| $m$ | Mes contado desde $t_0$ ($m = 0, \dots, H$); el pago del mes $m$ ocurre al cierre de ese mes | meses | `month` |
-| $H$ | Horizonte: último mes del crédito (120) | meses | `backtest.horizon_months` |
-| $\tau$ | Mes de una revisión: $0, k, 2k, \dots$ | meses | `decision_months` |
-| $k$ | Meses entre revisiones (6) | meses | `backtest.rebalance_every` |
-| $n$ | Meses desde $\tau$ hasta que vence un CDT vivo ($0 < n \le k$) | meses | – |
-| $i$ | Tasa mensual del crédito: $(1{,}10)^{1/12} - 1$ | decimal | `monthly_rate` |
-| $C$ | Cuota fija de los meses 37–120 (20.379,53) | UVR | `installment` |
-| $P_m$ | Pago total del mes $m$ (cuota + abono) | UVR | `total_payment_uvr` |
-| $\text{UVR}_m$ | Valor real de la UVR al cierre del mes $m$ | COP por UVR | panel, columna `uvr` |
-| $\widehat{\text{UVR}}_m$ | UVR proyectada en $\tau$ para el mes $m$: $\text{UVR}_\tau (1 + \pi)^{(m - \tau)/12}$ | COP por UVR | `project_uvr` |
-| $\pi$ | Inflación anual de un escenario en $\tau$: base, alto ($\pi^{\text{base}}_\tau$ + 3 p.p.) o bajo ($\pi^{\text{base}}_\tau$ − 1,5 p.p.) | decimal | `inflation_scenarios`, `scenarios` |
-| $\pi^{\text{base}}_\tau$ | Inflación base en $\tau$: la de los últimos 6 meses, anualizada | decimal | `base_lookback_months`, `trailing_inflation` |
-| $W$ | Riqueza en $\tau$: FIC + CDT + ETF a precio de mercado | COP | `wealth` |
-| $L$ | Necesidad de liquidez en $\tau$ | COP | `projected_payments_cop` |
-| $w$ | Peso del ETF sobre $W - L$ (plan 1: 0,10) | decimal | `conservative.equity_weight` |
-| $r^{\text{FIC}}_m$ | Rentabilidad del FIC en el mes $m$: índice de los FIC de mercado monetario (Superfinanciera); realizada en el mes para el resultado y anualizada para decidir | decimal | panel, columnas `fic_return` y `fic` |
-| $r^{\text{CDT}}_\tau$ | Tasa anual del CDT comprado en $\tau$ (CDT a 180 días) | decimal E.A. | panel, columna `cdt_180` |
-| $D_m$ | Déficit del mes $m$: parte del pago que el FIC no cubre | COP | `shortfall` |
+| $t_0$ | Fecha inicial del backtest (oct-2016), mes 0 | fecha | YAML `backtest.t0` |
+| $m$ | Mes contado desde $t_0$, $m = 0, \dots, H$ | meses | columna `month` |
+| $H$ | Horizonte: último mes del crédito (120) | meses | YAML `backtest.horizon_months` |
+| $k$ | Meses entre revisiones (6) | meses | YAML `backtest.review_every_months` |
+| $\tau$ | Mes de una revisión: $0, k, 2k, \dots, H - k$ | meses | función `decision_months` |
+| $P_m$ | Pago total del mes $m$ (cuota + abono), de la tabla de amortización | UVR | columna `total_payment_uvr` |
+| $\text{UVR}_m$ | Valor observado de la UVR al cierre del mes $m$ | COP por UVR | columna `uvr_cop` |
+| $\pi^{\text{base}}_\tau$ | Inflación base en $\tau$: la de los últimos 6 meses, anualizada (S14) | decimal E.A. | función `trailing_inflation` |
+| $\pi_\tau$ | Inflación del escenario que usa cada plan en $\tau$ (ver abajo) | decimal E.A. | función `scenarios` |
+| $\widehat{\text{UVR}}_{m\mid\tau}$ | UVR proyectada en $\tau$ para el mes $m > \tau$ | COP por UVR | función `project_uvr` |
+| $r^{\text{FIC}}_m$ | Rentabilidad **realizada** del FIC durante el mes $m$ (índice de FIC de mercado monetario, S10) | decimal mensual | columna `fic_ret_m` |
+| $\bar r^{\text{FIC}}_m$ | La misma, anualizada: conocida al cierre del mes $m$, se usa para decidir | decimal E.A. | columna `fic_rate_ea` |
+| $r_j(\tau)$ | Tasa observada del CDT de plazo $j$ meses comprado en $\tau$ ($j$ = 3, 6, 12: DTF, CDT 180 y 360 días) | decimal E.A. | columnas `cdt_90d_ea`, `cdt_180d_ea`, `cdt_360d_ea` |
+| $F_m$ | Saldo del FIC al cierre del mes $m$ (después de crecer, recibir lo que vence y pagar) | COP | columna `fic_cop` |
+| $W$ | Dinero libre en $\tau$: FIC + ETF a precio de mercado (lo que vence en $\tau$ ya está en el FIC) | COP | variable `free_cop` |
+| $L$ | Necesidad de liquidez del plan 1 en $\tau$ | COP | función `projected_payments_cop` |
+| $w$ | Peso del ETF sobre $W - L$ (plan 1: 0,10) | decimal | YAML `conservative.etf_weight` |
+| $D_m$ | Déficit del mes $m$: parte del pago que el FIC no cubre | COP | columna `shortfall_cop` |
 
-**Plan 2:**
+**Escenarios de inflación.** En cada $\tau$ hay tres: base $=\pi^{\text{base}}_\tau$, alto
+$=\pi^{\text{base}}_\tau + 0{,}03$ y bajo $=\pi^{\text{base}}_\tau - 0{,}015$. El plan 1 usa el alto para dimensionar el
+FIC (YAML `conservative.fic_sizing_scenario`); el plan 2 usa el base para pasar tasas nominales a reales (YAML
+`cdt_ladder.deflator_scenario`). $\pi_\tau$ denota el que usa cada plan.
 
-| Símbolo | Significado | Unidad | En el código / YAML |
+**Plan 2 (variables del LP):**
+
+| Símbolo | Significado | Unidad | En el código |
 |---|---|---|---|
-| $j$ | Plazo de un CDT: 3, 6 o 12 | meses | llaves de `cdt_ladder.terms` |
-| $r_j(\tau)$ | Tasa nominal del CDT de plazo $j$ en $\tau$ (DTF, CDT 180 o CDT 360 días) | decimal E.A. | columna de `cdt_ladder.terms` |
-| $\tilde r_j(\tau)$ | Rentabilidad real **esperada** de ese CDT en $\tau$ (solo para decidir) | decimal E.A. | `real_rates` |
-| $y_{s,j}$ | Monto invertido en el mes $s$ en un CDT de plazo $j$ (solo en meses de revisión) | UVR | variable del LP |
-| $c_m$ | Caja (FIC) al cierre del mes $m$ | UVR | variable del LP |
-| $M_m$ | Lo que vence en el mes $m$ de los CDT ya comprados | UVR | `maturities_uvr` |
-| $B$ | Dinero libre en $\tau$, en UVR | UVR | `budget_uvr` |
-| $\rho_\tau$ | Rentabilidad real **esperada** de la caja en el LP (solo para decidir) | decimal E.A. | `cash_rate` |
+| $j$ | Plazo de un CDT: 3, 6 o 12 | meses | YAML `cdt_ladder.term_columns` |
+| $\tilde r_j(\tau)$ | Rentabilidad real **esperada** del CDT de plazo $j$ (solo para decidir) | decimal E.A. | variable `cdt_real_ea` |
+| $\rho_\tau$ | Rentabilidad real **esperada** de la caja (solo para decidir) | decimal E.A. | variable `fic_real_ea` |
+| $\mathcal R_\tau$ | Meses en que se puede comprar: $\{\tau, \tau + k, \tau + 2k, \dots\}$ | meses | – |
+| $y_{s,j}$ | Monto invertido en el mes $s \in \mathcal R_\tau$ en un CDT de plazo $j$, con $s + j \le H$ | UVR | variable del LP |
+| $c_m$ | Caja (FIC) al cierre del mes $m$ dentro del LP | UVR | variable del LP |
+| $M_m$ | Lo que vence en el mes $m$ de los CDT comprados antes de $\tau$ | UVR | variable `maturities_uvr` |
+| $B$ | Dinero libre en $\tau$, en UVR | UVR | variable `budget_uvr` |
 
-Definiciones:
-
-$$
-\pi^{\text{base}}_\tau = \left(\frac{\text{UVR}_\tau}{\text{UVR}_{\tau-6}}\right)^{12/6} - 1
-\qquad
-L = \sum_{m=\tau+1}^{\tau+k} P_m \, \widehat{\text{UVR}}_m
-$$
+**Definiciones:**
 
 $$
-B = \frac{\text{FIC}_\tau + \text{lo que vence en } \tau}{\text{UVR}_\tau}
+\pi^{\text{base}}_\tau = \left(\frac{\text{UVR}_\tau}{\text{UVR}_{\tau-6}}\right)^{2} - 1
 \qquad
-\tilde r_j(\tau) = \frac{1 + r_j(\tau)}{1 + \pi^{\text{base}}_\tau} - 1
+\widehat{\text{UVR}}_{m\mid\tau} = \text{UVR}_\tau\,(1 + \pi_\tau)^{(m-\tau)/12}
 \qquad
-\rho_\tau = \frac{1 + r^{\text{FIC}}_\tau}{1 + \pi^{\text{base}}_\tau} - 1
+\bar r^{\text{FIC}}_m = \bigl(1 + r^{\text{FIC}}_m\bigr)^{12} - 1
 $$
+
+El 6 de $\pi^{\text{base}}_\tau$ es `base_lookback_months`, no $k$.
+
+$$
+\tilde r_j(\tau) = \frac{1 + r_j(\tau)}{1 + \pi_\tau} - 1
+\qquad
+\rho_\tau = \frac{1 + \bar r^{\text{FIC}}_\tau}{1 + \pi_\tau} - 1
+\qquad
+B = \frac{F_\tau}{\text{UVR}_\tau}
+$$
+
+$$
+M_m = \sum_{\text{CDT vivos que vencen en } m} \frac{V}{\widehat{\text{UVR}}_{m\mid\tau}}
+\qquad (M_m = 0 \text{ si } m \le \tau)
+$$
+
+donde $V$ es el valor del CDT al vencer, en COP: capital $\times\,(1 + \text{tasa})^{\text{plazo}/12}$.
+
+$$
+D_m = \max\bigl(P_m\,\text{UVR}_m - F^{-}_m,\ 0\bigr)
+$$
+
+donde $F^{-}_m$ es el saldo del FIC en el mes $m$ después de crecer y recibir lo que vence, y antes de pagar.
 
 ## Supuestos comunes a todos los planes
 
 - **Orden dentro de un mes (S12):** primero crecen los activos, luego vencen los CDT, luego se paga la cuota y, si es
-  mes de revisión, se decide. Un CDT que vence en el mes $m$ sirve para el pago del mes $m$. Si un CDT vivo vence en
-  $\tau + n$ ($0 < n \le k$), la caja de hoy solo debe cubrir los $n - 1$ pagos anteriores
-  ($\tau+1, \dots, \tau+n-1$).
+  mes de revisión, se decide. Un CDT que vence en el mes $m$ sirve para el pago del mes $m$. Si el primer CDT que
+  vence después de $\tau$ lo hace en el mes $m^\star$, la caja de hoy solo debe cubrir los pagos
+  $\tau+1, \dots, m^\star-1$ (regla $n - 1$).
 - **Solo se compra en las revisiones (S13):** lo que vence entre $\tau$ y $\tau + k$ y no se usa para pagar queda en
   el FIC hasta la siguiente revisión.
 - **Sin información futura:** en cada revisión la estrategia recibe los datos solo hasta $\tau$.
-- **Inflación proyectada:** la base es la inflación de los últimos 6 meses medida con la UVR
+- **Inflación proyectada (S14):** la base es la inflación de los últimos 6 meses medida con la UVR
   ($\pi^{\text{base}}_\tau$). Es un modelo provisional hasta que exista el modelo de inflación (`scenarios` en
   `src/uvr_loan/inflation.py`). Con 6 meses la base tiene estacionalidad: en abril ve los meses de inflación alta de
   comienzo de año y en octubre los de inflación baja.
-- **Déficit (S9):** si el FIC no alcanza para un pago, se registra el déficit y no se hace nada más: no se vende ETF
-  ni se redime un CDT antes del vencimiento.
+- **Déficit (S9):** si el FIC no alcanza para un pago, se registra el déficit $D_m$ y no se hace nada más: no se vende
+  ETF ni se redime un CDT antes del vencimiento.
 - **FIC (S10):** rinde lo que rindió un índice de los FIC de mercado monetario reales: el valor de la unidad de cada
   fondo, publicado a diario por la Superfinanciera, promediado según el tamaño de cada fondo. Ver `data/SOURCES.md`.
 - **Sin costos ni impuestos (S3, S6):** comprar, vender y rebalancear no cuesta nada.
@@ -94,34 +119,34 @@ sirve como punto de comparación para los planes más elaborados.
 | Instrumento | Rol | Dato que se usa |
 |---|---|---|
 | **FIC a la vista** | Liquidez: de aquí salen las cuotas | Índice de FIC de mercado monetario (Superfinanciera) |
-| **CDT a 180 días** | Renta fija; vence justo en la siguiente revisión | Tasa de CDT a 180 días del mes de compra |
+| **CDT a 180 días** | Renta fija; vence justo en la siguiente revisión | $r_6(\tau)$: tasa observada del CDT a 180 días del mes de compra |
 | **ETF iShares COLCAP** (`ICOLCAP`) | Porción pequeña en renta variable para crecimiento | Precio ajustado por dividendos |
 
 Las fuentes de cada serie están en [`data/SOURCES.md`](../data/SOURCES.md).
 
 ### Cuándo se decide
 
-En cada revisión $\tau$, cada $k$ = `backtest.rebalance_every` meses (hoy 6), desde `backtest.t0` (oct-2016):
+En cada revisión $\tau$, cada $k$ = `backtest.review_every_months` meses (hoy 6), desde `backtest.t0` (oct-2016):
 oct-2016, abr-2017, oct-2017, …, abr-2026.
 
 ### Cómo se decide: tres pasos
 
-**1. Cuánto dinero hay ($W$)**
+**1. Cuánto dinero libre hay ($W$)**
 
-$W$ = saldo del FIC + valor del CDT que vence ese día (capital más intereses) + valor del ETF a precio de mercado.
+$W$ = saldo del FIC (que ya incluye el CDT que vence ese mes) + valor del ETF a precio de mercado.
 
 En $t_0$, $W$ = 760.000.000 COP (`initial_capital_cop`).
 
-**2. Cuánto se necesita hasta la siguiente revisión ($L$)**
+**2. Cuánto se necesita hasta que venza el nuevo CDT ($L$)**
 
-1. Se toman los pagos en UVR $P_m$ de los meses $\tau+1, \dots, \tau+k$ de la tabla de amortización (cuotas y
-   abonos).
-2. Se pasan a COP con la UVR proyectada $\widehat{\text{UVR}}_m$: la UVR real de $\tau$ creciendo a la inflación del
-   escenario `conservative.liquidity_scenario` (hoy el **alto**: $\pi^{\text{base}}_\tau$ + 3 p.p.; en oct-2016,
-   4,34 % + 3 p.p. = 7,34 %).
-3. La suma es la necesidad de liquidez $L$.
+El CDT que se compra hoy vence en $\tau + k$ y, por S12, paga $P_{\tau+k}$. El FIC solo cubre los pagos anteriores:
 
-Se usa el escenario alto para que el FIC alcance aunque la inflación sea mayor que la esperada.
+$$
+L = \sum_{m=\tau+1}^{\tau+k-1} P_m\,\widehat{\text{UVR}}_{m\mid\tau}
+$$
+
+con la UVR proyectada al escenario **alto** (`conservative.fic_sizing_scenario`; en oct-2016,
+4,34 % + 3 p.p. = 7,34 %), para que el FIC alcance aunque la inflación sea mayor que la esperada.
 
 **3. Repartir $W$**
 
@@ -131,75 +156,77 @@ Se usa el escenario alto para que el FIC alcance aunque la inflación sea mayor 
 | ETF | $w\,(W - L)$, con $w$ = 10 % hoy |
 | CDT | el resto: $(1 - w)(W - L)$ |
 
-Si los pagos superan la riqueza ($L > W$), todo va al FIC y la diferencia se registra como déficit.
+Si los pagos proyectados superan el dinero libre ($L > W$), todo va al FIC; la parte que no alcanza solo se convierte
+en déficit $D_m$ si al llegar el pago el FIC no lo cubre.
 
 ### Entre revisiones (cada mes)
 
-- El FIC crece a la tasa del mes anterior, pasada a mensual: $\left(1 + r^{\text{FIC}}_{m-1}\right)^{1/12}$.
-- El CDT crece a la tasa fijada al comprarlo: $\left(1 + r^{\text{CDT}}_\tau\right)^{1/12}$ por mes.
+- El FIC crece con su rentabilidad realizada del mes: $F^{-}_m = F_{m-1}\,(1 + r^{\text{FIC}}_m)$ más lo que vence.
+- El CDT crece a la tasa fijada al comprarlo: $\bigl(1 + r_6(\tau)\bigr)^{1/12}$ por mes.
 - El ETF vale las unidades compradas por su precio del mes.
-- Se paga la cuota del mes en COP, $P_m \, \text{UVR}_m$ (con la UVR **real**), sacándola del FIC. Lo que falte es el
-  déficit $D_m$.
+- Se paga la cuota del mes en COP, $P_m\,\text{UVR}_m$ (con la UVR **observada**), sacándola del FIC. Lo que falte es
+  el déficit $D_m$.
 
-En la siguiente revisión el CDT vence, todo se vuelve a sumar en $W$ y se repiten los tres pasos. Así el ETF vuelve
-al 10 % y el FIC se ajusta a los pagos que vienen.
+En la siguiente revisión el CDT vence, entra al FIC, paga el pago de ese mes y lo que queda forma el nuevo $W$. Así el
+ETF vuelve al 10 % y el FIC se ajusta a los pagos que vienen.
 
 ### Ejemplos (backtest con datos reales)
 
-| Revisión | $W$ | $L$ (pagos de los próximos 6 meses) | FIC | CDT | ETF |
+| Revisión | $W$ | $L$ (pagos de los próximos 5 meses) | FIC | CDT | ETF |
 |---|---|---|---|---|---|
 | oct-2016 (gracia) | 760,0M | 0 | 0 | 684,0M | 76,0M |
-| oct-2019 (antes de la primera cuota) | 906,5M | 33,6M | 33,6M | 785,6M | 87,3M |
+| oct-2019 (antes de la primera cuota) | 906,5M | 27,9M | 27,9M | 790,7M | 87,9M |
+
+### Riesgo
+
+Con la regla $n - 1$ el FIC queda casi vacío justo antes de que venza el CDT: el saldo mínimo en un mes de pago fue
+57.601 COP. No hubo déficit en el backtest, pero el margen frente a una inflación mayor que el escenario alto es
+pequeño en esos meses (mar y sep de 2020–2022 y mar-2026).
 
 ### Simplificaciones propias del plan 1
 
 - **Plazo del CDT (S10):** se usa la tasa de 180 días aunque se pruebe $k$ = 3 o 12.
-- Además aplican los supuestos comunes (S9, S10 para el FIC, S12, S13).
+- Además aplican los supuestos comunes.
 
 ### Qué decide la regla y qué no
 
 - **Dónde invertir:** los tres instrumentos son fijos, elegidos de antemano. La regla no compara alternativas.
-- **Cuánto:** lo fijan solo los pagos próximos (FIC) y `equity_weight` (ETF). El 10 % es una elección, no el
-  resultado de un cálculo.
+- **Cuánto:** lo fijan solo los pagos próximos (FIC) y `etf_weight` (ETF). El 10 % es una elección, no el resultado
+  de un cálculo.
 
 ## Plan 2 – Escalera de CDT optimizada
 
 En lugar de poner todo en un CDT a 180 días (plan 1), escoge con un **programa lineal (LP)** cuánto invertir en CDT de
 tasa fija a 3, 6 y 12 meses para que vayan venciendo cuando llegan los pagos. No hay renta variable. Los CDT y la caja
-rinden sus tasas **reales** del BanRep; solo la decisión usa la inflación esperada.
+rinden sus tasas **observadas** (BanRep e índice de FIC); solo la decisión usa la inflación esperada.
 
 ### Instrumentos
 
 | Instrumento | Rol | Dato que se usa (resultado) |
 |---|---|---|
-| **CDT a 3 meses** | Escalera | DTF a 90 días del mes de compra (serie 65) |
-| **CDT a 6 meses** | Escalera | CDT a 180 días del mes de compra (serie 67) |
-| **CDT a 12 meses** | Escalera | CDT a 360 días del mes de compra (serie 68) |
+| **CDT a 3 meses** | Escalera | $r_3(\tau)$: DTF del mes de compra (serie 65) |
+| **CDT a 6 meses** | Escalera | $r_6(\tau)$: CDT a 180 días del mes de compra (serie 67) |
+| **CDT a 12 meses** | Escalera | $r_{12}(\tau)$: CDT a 360 días del mes de compra (serie 68) |
 | **FIC a la vista** | Caja para los pagos que caen antes del siguiente vencimiento | Índice de FIC de mercado monetario (Superfinanciera) |
 
 ### Cómo se decide en cada revisión $\tau$
 
-Los pagos están fijos en UVR, así que el LP trabaja en UVR. Como los CDT pagan una tasa nominal, el LP necesita su
-rendimiento en UVR, que no se conoce de antemano: usa el **esperado**, $\tilde r_j(\tau)$, con la inflación base
-(`cdt_ladder.liquidity_scenario`).
+Los pagos están fijos en UVR, así que el LP trabaja en UVR. Como los CDT y el FIC pagan en pesos, el LP necesita su
+rendimiento en UVR, que no se conoce de antemano: usa el **esperado**, $\tilde r_j(\tau)$ y $\rho_\tau$, con la
+inflación base (`cdt_ladder.deflator_scenario`).
 
-1. **Datos (en UVR):**
-   - los pagos $P_m$ de los meses $\tau+1, \dots, H$;
-   - lo que vence de los CDT vivos, $M_m$: su valor al vencer en COP dividido por la UVR proyectada de ese mes;
-   - el dinero libre $B$;
-   - los rendimientos reales esperados $\tilde r_j(\tau)$ de cada plazo y $\rho_\tau$ de la caja.
-2. **Variables:**
-   - $y_{s,j} \ge 0$: compras en los meses de revisión $s = \tau, \tau + k, \dots$ con $s + j \le H$. Incluyen las
-     reinversiones futuras previstas;
-   - $c_m \ge 0$: caja al cierre de cada mes.
+1. **Datos (en UVR):** los pagos $P_m$ de los meses $\tau+1, \dots, H$; lo que vence de los CDT vivos, $M_m$; el
+   dinero libre $B$; los rendimientos reales esperados $\tilde r_j(\tau)$ y $\rho_\tau$.
+2. **Variables:** $y_{s,j} \ge 0$ para $s \in \mathcal R_\tau$ y $s + j \le H$ (incluyen las reinversiones futuras
+   previstas); $y_{s,j} = 0$ en los demás casos. $c_m \ge 0$, caja al cierre de cada mes, después de pagar.
 3. **Problema:**
 
 $$
 \begin{aligned}
 \max_{y,\,c} \quad & c_H \\
 \text{s.a.} \quad & c_\tau + \sum_j y_{\tau,j} = B \\
-& c_m = c_{m-1}(1 + \rho_\tau)^{1/12} + \sum_j y_{m-j,\,j}\,\bigl(1 + \tilde r_j(\tau)\bigr)^{j/12} + M_m - \sum_j y_{m,j} - P_m,
-  \quad m = \tau+1, \dots, H \\
+& c_m = c_{m-1}(1 + \rho_\tau)^{1/12} + \sum_j y_{m-j,\,j}\,\bigl(1 + \tilde r_j(\tau)\bigr)^{j/12} \\
+& \qquad\quad + M_m - \sum_j y_{m,j} - P_m, \qquad m = \tau+1, \dots, H \\
 & y_{s,j} \ge 0, \quad c_m \ge 0
 \end{aligned}
 $$
@@ -207,8 +234,8 @@ $$
    Por S12, lo que vence en $m$ sirve para $P_m$.
 
 4. **Ejecución:** solo se compran los $y_{\tau,j}$ de hoy, convertidos a COP con $\text{UVR}_\tau$; $c_\tau$ queda en
-   el FIC. Cada CDT rinde después su tasa nominal **real** $r_j(\tau)$. En la siguiente revisión se vuelve a resolver
-   con los CDT vivos como $M_m$.
+   el FIC. Cada CDT rinde después su tasa observada $r_j(\tau)$. En la siguiente revisión se vuelve a resolver con los
+   CDT vivos como $M_m$.
 5. **Sin escalera posible:** si con la inflación esperada el dinero libre no alcanza para todos los pagos, no se
    compra nada, todo queda en el FIC y los déficits se registran (S9).
 
@@ -234,14 +261,20 @@ abr-2026 no hubo escalera posible y el dinero quedó en el FIC.
 - Los CDT se compran a la tasa promedio del mercado de su plazo (no a la de un banco concreto), por cualquier monto,
   solo en las revisiones, y se mantienen hasta el vencimiento.
 - **Pronóstico de la caja (S15):** para decidir, el LP supone que el FIC seguirá rindiendo, durante todo el horizonte,
-  lo mismo que rindió el último mes, anualizado (columna `fic` en $\tau$). Así obtiene $\rho_\tau$ y lo compara con
+  lo mismo que rindió el último mes, anualizado ($\bar r^{\text{FIC}}_\tau$). Así obtiene $\rho_\tau$ y lo compara con
   los CDT. Como la caja y los CDT se descuentan con la misma inflación, preferir la caja depende solo de comparar
-  esa tasa con la de los CDT del día. Evaluado contra lo que pasó en los 6 meses siguientes a cada revisión:
+  $\bar r^{\text{FIC}}_\tau$ con las $r_j(\tau)$ del día. Evaluado contra lo que pasó en los 6 meses siguientes a cada
+  revisión:
   - acierta en 17 de 20 revisiones cuál rinde más, la caja o el CDT a 180 días. Falla en abr-2020 (prácticamente un
     empate) y en abr-2022 y oct-2022, cuando el BanRep subía tasas y el FIC, que sigue las tasas mes a mes, le ganó a
     los CDT comprados a la tasa anterior;
   - el error absoluto medio del rendimiento nominal del FIC es 1,29 p.p. y tiende a subestimarlo (−0,78 p.p. en
     promedio) cuando las tasas suben; el mayor error fue 5,87 p.p. en oct-2022;
-  - el error de $\rho_\tau$ (real) es mayor, 2,30 p.p. en promedio, y viene sobre todo de la inflación base (S14), no
-    del FIC.
+  - el error de $\rho_\tau$ es mayor, 2,30 p.p. en promedio, y viene sobre todo de la inflación base (S14), no del FIC;
+  - **si el último mes del FIC fue negativo**, $\rho_\tau$ queda muy negativo (oct-2021:
+    $\bar r^{\text{FIC}}_\tau$ = −0,91 %, $\rho_\tau$ = −6,22 %). El LP no falla: guarda en caja solo lo
+    indispensable, aparta un poco más para compensar la pérdida esperada (alrededor del 0,5–1 % de esa caja) y pone
+    el resto en CDT. Después de oct-2021 el FIC rindió +2,69 %, así que el pronóstico fue pesimista, sin costo. El
+    caso que sí puede afectar es el contrario (pronóstico positivo y mes real negativo), en el que la caja queda un
+    poco corta; el índice solo tuvo 4 meses negativos en 10 años (el peor, −0,16 %). No se pone un piso al pronóstico.
 - Además aplican los supuestos comunes.

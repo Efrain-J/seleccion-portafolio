@@ -12,8 +12,8 @@ from uvr_loan.inflation import project_uvr
 
 
 def decision_months(backtest: dict[str, Any]) -> list[int]:
-    """Months tau = 0, k, 2k, ... at which the portfolio is chosen (k = `rebalance_every`)."""
-    return list(range(0, backtest["horizon_months"], backtest["rebalance_every"]))
+    """Months tau = 0, k, 2k, ... at which the portfolio is reviewed (k = `review_every_months`)."""
+    return list(range(0, backtest["horizon_months"], backtest["review_every_months"]))
 
 
 def month_to_period(t0: str, month: int) -> pd.Period:

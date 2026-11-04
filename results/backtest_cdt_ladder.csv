@@ -1,4 +1,4 @@
-month,period,uvr,payment_cop,shortfall,fic,cdt,etf,wealth,review
+month,period,uvr_cop,payment_cop,shortfall_cop,fic_cop,cdt_cop,etf_cop,wealth_cop,is_review
 0,2016-10,242.518,0.0,0.0,0.0,760000000.0000001,0.0,760000000.0000001,True
 1,2016-11,242.3866,0.0,0.0,0.0,764875658.5499208,0.0,764875658.5499208,False
 2,2016-12,242.4513,0.0,0.0,0.0,769782665.1231961,0.0,769782665.1231961,False
