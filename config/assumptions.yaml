@@ -18,7 +18,7 @@ backtest:
   rebalance_sensitivity: [3, 6, 12]
 
 inflation_scenarios:
-  base_annual: 0.03            # placeholder until the inflation model exists (BanRep target)
+  base_lookback_months: 6      # base = annualized UVR inflation of the last 6 months (placeholder model)
   high_shock_pp: 3.0           # high = base + 3 pp
   low_shock_pp: -1.5           # low = base - 1.5 pp
 
@@ -39,4 +39,12 @@ data:
   uvr_series: 850              # BanRep SUAMECA series ID, daily COP per UVR
   rate_series:                 # SUAMECA IDs, weekly, % effective annual
     cdt_180: 67
+    cdt_360: 68
     fic: 65                    # DTF 90 days, proxy for FIC returns
+
+cdt_ladder:                    # Plan 2: ladder of fixed-rate CDTs chosen with an LP in UVR
+  liquidity_scenario: base     # inflation that turns nominal rates (CDT and FIC) into expected real ones
+  terms:                       # CDT term in months: panel column with its rate
+    3: fic                     # DTF = 90-day CDT rate
+    6: cdt_180
+    12: cdt_360

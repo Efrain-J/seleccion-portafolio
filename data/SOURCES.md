@@ -10,6 +10,7 @@ Series used by the model, where they come from and how they are used. Downloaded
 |---|---|---|---|---|---|---|---|
 | UVR | `uvr` | Banco de la República (SUAMECA) | 850 | COP per UVR | Daily | 2000-01-01 | `banrep_850.csv` |
 | CDT 180 days | `cdt_180` | Banco de la República (SUAMECA), with Superfinanciera data | 67 | % effective annual, base 365 | Weekly | 1993-07-16 | `banrep_67.csv` |
+| CDT 360 days | `cdt_360` | Banco de la República (SUAMECA), with Superfinanciera data | 68 | % effective annual, base 365 | Weekly | 1993-07-16 | `banrep_68.csv` |
 | DTF 90 days | `fic` | Banco de la República (SUAMECA), with Superfinanciera data | 65 | % effective annual, base 365 | Weekly | 1984-01-20 | `banrep_65.csv` |
 | iShares COLCAP ETF | `etf` | Yahoo Finance | `ICOLCAP.CL` | COP, close adjusted for dividends | Daily (BVC trading days) | 2015-01-02 (requested range) | `yahoo_ICOLCAP.CL.csv` |
 
@@ -37,11 +38,15 @@ the rates are converted from % to decimals.
 Value in COP of one UVR, certified by Banco de la República from the CPI. It converts the loan payments from UVR to COP.
 
 ### CDT 180 days (67)
-Weighted average rate of 180-day CDTs. It is the rate of the CDT the conservative plan buys at each review.
+Weighted average rate of 180-day CDTs. It is the rate of the CDT the conservative plan buys at each review, and of the
+6-month CDTs of plan 2.
+
+### CDT 360 days (68)
+Weighted average rate of 360-day CDTs. It is the rate of the 12-month CDTs of plan 2.
 
 ### DTF 90 days (65)
-Weighted average rate of 90-day CDTs. **Assumption:** it is used as a proxy for the return of a sight FIC (money market
-fund), because no real fund is used yet.
+Weighted average rate of 90-day CDTs. It is the rate of the 3-month CDTs of plan 2. **Assumption:** it is also used as
+a proxy for the return of a sight FIC (money market fund), because no real fund is used yet.
 
 ## Yahoo Finance
 

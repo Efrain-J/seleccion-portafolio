@@ -69,7 +69,8 @@ Download the market data and build the monthly panel (end of month, rates as dec
 |---|---|---|
 | `uvr` | BanRep SUAMECA, series 850 | COP per UVR, daily |
 | `cdt_180` | BanRep SUAMECA, series 67 | CDT 180 days, weekly, effective annual |
-| `fic` | BanRep SUAMECA, series 65 | DTF 90 days, used as a proxy for FIC returns |
+| `cdt_360` | BanRep SUAMECA, series 68 | CDT 360 days, weekly, effective annual |
+| `fic` | BanRep SUAMECA, series 65 | DTF 90 days: 90-day CDT rate and proxy for FIC returns |
 | `etf` | Yahoo Finance, `ICOLCAP.CL` | iShares COLCAP, adjusted close in COP |
 
 Endpoints, units, assumptions and known issues of every source are in [`data/SOURCES.md`](data/SOURCES.md).
@@ -83,19 +84,22 @@ Print the conservative allocation (Plan 1) at t0:
 Plan 1 keeps in the FIC the payments due before the next review (high inflation scenario), puts
 `conservative.equity_weight` of the rest in the ETF and the remainder in a CDT that matures at the next review. Every
 parameter (t0, review frequency, ETF weight, inflation scenarios, data series) is read from
-`config/assumptions.yaml`. The full rule, with examples and simplifications, is in
-[`docs/reglas_de_inversion.md`](docs/reglas_de_inversion.md).
+`config/assumptions.yaml`. Plan 2 (CDT ladder) buys fixed-rate CDTs of 3, 6 and 12 months chosen with a linear
+program in UVR that covers every remaining payment and maximizes the final wealth; the decision uses expected real
+returns, and the results use the observed CDT rates. Every reported peso comes from observed data. The base inflation of the
+scenarios is the UVR inflation of the last `base_lookback_months` months known at each review. The full rules, with
+notation, examples and simplifications, are in [`docs/reglas_de_inversion.md`](docs/reglas_de_inversion.md).
 
-Run the dynamic backtest of Plan 1 from t0 to the end of the horizon (reviews every `rebalance_every` months):
+Run the dynamic backtest of every plan from t0 to the end of the horizon (reviews every `rebalance_every` months):
 
 ```
 .venv\Scripts\python -m uvr_loan.backtest
 ```
 
-It writes `results/backtest_conservative.csv` (one row per month: payment in COP, shortfall, FIC, CDT, ETF and total
-wealth) and `results/summary_conservative.csv` (months with shortfall, minimum liquidity, final wealth, annualized
-time-weighted return and volatility, maximum drawdown). If the FIC cannot cover a payment, the shortfall is recorded
-and nothing is sold.
+It writes `results/backtest_<plan>.csv` for each plan (one row per month: payment in COP, shortfall, FIC, CDT, ETF and
+total wealth) and `results/summary.csv` with one column per plan (months with shortfall, minimum liquidity, final
+wealth, annualized time-weighted return and volatility, maximum drawdown). If the FIC cannot cover a payment, the
+shortfall is recorded and nothing is sold.
 
 ## Architecture
 
@@ -113,7 +117,7 @@ Target structure. So far `config.py`, `amortization.py`, `data/`, `inflation.py`
 │   ├── raw/                  # Download cache (UVR, CPI, TES curves, CDT rates, COLCAP, FIC)
 │   └── processed/            # Clean monthly series and payment_schedule_uvr.csv
 ├── notebooks/                # Exploration and charts; they import uvr_loan
-├── pyproject.toml            # Package metadata and dependencies (numpy, pandas, pyyaml)
+├── pyproject.toml            # Package metadata and dependencies (numpy, pandas, scipy, ...)
 ├── src/uvr_loan/
 │   ├── config.py             # Loads assumptions.yaml
 │   ├── amortization.py       # UVR amortization schedule (grace + prepayments)
