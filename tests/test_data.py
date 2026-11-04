@@ -4,7 +4,13 @@ import pandas as pd
 import pytest
 
 from uvr_loan.data import sources
-from uvr_loan.data.cleaning import build_fic_index, build_monthly_panel, fic_returns, to_month_end
+from uvr_loan.data.cleaning import (
+    build_fic_index,
+    build_monthly_panel,
+    etf_columns,
+    fic_returns,
+    to_month_end,
+)
 from uvr_loan.data.sources import (
     cached,
     cached_table,
@@ -185,3 +191,23 @@ def test_download_money_market_fic_has_funds_in_t0():
     table = fetch_money_market_fic("qhpu-8ixx", "FIC DE MERCADO MONETARIO", "2016-10-31", "2016-10-31")
     assert len(table) >= 10
     assert (table["valor_unidad_operaciones"] > 0).all()
+
+
+def test_etf_columns_convert_usd_with_the_trm_of_the_same_month_and_use_past_volatility():
+    days = pd.to_datetime(["2020-01-15", "2020-01-31", "2020-02-28", "2020-03-31"])
+    usd = pd.Series([9.0, 10.0, 11.0, 9.9], days)
+    trm = pd.Series([3_000.0, 4_000.0, 4_000.0, 5_000.0], days)
+    cols = etf_columns(
+        {"cspx": usd, "icolcap": usd * 1_000}, {"cspx": "USD", "icolcap": "COP"}, trm, window=2
+    )
+    assert list(cols["cspx_price_cop"]) == pytest.approx([40_000.0, 44_000.0, 49_500.0])
+    assert list(cols["icolcap_price_cop"]) == pytest.approx([10_000.0, 11_000.0, 9_900.0])
+    returns = pd.Series([0.10, 0.125])  # COP returns of cspx in February and March
+    assert cols["cspx_vol_ea"].iloc[-1] == pytest.approx(returns.std() * 12**0.5)
+    assert cols["cspx_vol_ea"].iloc[:2].isna().all()  # needs `window` returns
+
+
+def test_etf_columns_reject_an_unknown_currency():
+    s = pd.Series([1.0], pd.to_datetime(["2020-01-31"]))
+    with pytest.raises(ValueError, match="EUR"):
+        etf_columns({"x": s}, {"x": "EUR"}, s, window=2)

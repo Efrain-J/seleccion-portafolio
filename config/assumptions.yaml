@@ -1,4 +1,4 @@
-# Problem parameters and modeling assumptions (S1–S15, see docs/reglas_de_inversion.md).
+# Problem parameters and modeling assumptions (S1–S19, see docs/reglas_de_inversion.md).
 # Naming: money ends in _cop or _uvr; rates are decimals ending in _ea (effective annual) or _m (monthly).
 
 initial_capital_cop: 760_000_000
@@ -31,7 +31,11 @@ conservative:                  # Plan 1: FIC (liquidity + a share of the rest) +
 data:
   start: "2016-01-01"          # first day of the FIC data (Superfinanciera)
   end: "2026-11-30"
-  etf_ticker: ICOLCAP.CL       # Yahoo Finance, iShares COLCAP (COP)
+  etf_history_start: "2013-01-01"  # ETFs are downloaded from here: their volatility needs years before t0
+  etfs:                        # Yahoo Finance, adjusted close; panel column <name>_price_cop (USD converted with the TRM)
+    icolcap: {ticker: ICOLCAP.CL, currency: COP}   # iShares MSCI COLCAP (BVC)
+    cspx: {ticker: CSPX.L, currency: USD}          # iShares Core S&P 500 UCITS, Irish, accumulating (LSE, USD line)
+  trm_series: 1                # BanRep SUAMECA series ID, daily COP per USD (TRM)
   uvr_series: 850              # BanRep SUAMECA series ID, daily COP per UVR
   cdt_series:                  # panel column: SUAMECA ID (weekly, % effective annual; the panel keeps decimals)
     cdt_90d_ea: 65             # DTF series = 90-day CDT rate
@@ -48,3 +52,9 @@ cdt_ladder:                    # Plan 2: ladder of fixed-rate CDTs chosen with a
     3: cdt_90d_ea
     6: cdt_180d_ea
     12: cdt_360d_ea
+
+ldi:                           # Plan 3: CDT ladder up to the floor (x 1.05), ETFs with the rest (CPPI with m = 1)
+  floor_scenario: high         # inflation of the floor and of the ladder bought with it
+  floor_buffer: 0.05           # the ladder gets (1 + buffer) x floor; the rest of the free money goes to the ETFs
+  growth_assets: [icolcap, cspx]   # names in data.etfs; split by inverse volatility
+  vol_window_months: 36        # months of returns behind <name>_vol_ea (only months up to each review)

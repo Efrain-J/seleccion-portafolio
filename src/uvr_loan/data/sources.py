@@ -1,7 +1,7 @@
 """Download of raw series with a CSV cache in data/raw/.
 
-- BanRep SUAMECA: UVR and CDT/DTF rates, by series ID (see `data` in assumptions.yaml).
-- Yahoo Finance: ETF prices (adjusted close, so dividends are included).
+- BanRep SUAMECA: UVR, CDT/DTF rates and TRM, by series ID (see `data` in assumptions.yaml).
+- Yahoo Finance: ETF prices (adjusted close, so dividends are included), in each ETF's currency.
 - Superfinanciera (datos.gov.co): daily unit values of the money market FICs.
 
 Run `python -m uvr_loan.data.sources` to download every series in the config.
@@ -122,25 +122,36 @@ def load_fic_funds(cfg: dict[str, Any]) -> pd.DataFrame:
 
 
 def load_raw(cfg: dict[str, Any]) -> dict[str, pd.Series]:
-    """Every raw series in the config, by panel column name (UVR, CDT rates, ETF price)."""
+    """Every BanRep series in the config, by panel column name (UVR, CDT rates, TRM)."""
     data = cfg["data"]
-    banrep = {"uvr_cop": data["uvr_series"], **data["cdt_series"]}
-    raw = {
+    banrep = {"uvr_cop": data["uvr_series"], **data["cdt_series"], "trm_cop": data["trm_series"]}
+    return {
         name: cached(RAW_DIR / f"banrep_{series_id}.csv", partial(fetch_banrep_series, series_id))
         for name, series_id in banrep.items()
     }
-    ticker = data["etf_ticker"]
-    raw["etf_price_cop"] = cached(
-        RAW_DIR / f"yahoo_{ticker}.csv", partial(fetch_yahoo_close, ticker, data["start"], data["end"])
-    )
-    return raw
+
+
+def load_etf_prices(cfg: dict[str, Any]) -> dict[str, pd.Series]:
+    """Daily adjusted close of every ETF in `data.etfs` (in its own currency), from `data.etf_history_start`.
+
+    The cache file name includes the start date, so a cache downloaded with another start is not reused.
+    """
+    data = cfg["data"]
+    start = data["etf_history_start"]
+    return {
+        name: cached(
+            RAW_DIR / f"yahoo_{etf['ticker']}_{start}.csv",
+            partial(fetch_yahoo_close, etf["ticker"], start, data["end"]),
+        )
+        for name, etf in data["etfs"].items()
+    }
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     cfg = load_assumptions()
-    for name, s in load_raw(cfg).items():
-        print(f"{name:<8} {len(s):>6} rows  {s.index.min():%Y-%m-%d} -> {s.index.max():%Y-%m-%d}")
+    for name, s in {**load_raw(cfg), **load_etf_prices(cfg)}.items():
+        print(f"{name:<12} {len(s):>6} rows  {s.index.min():%Y-%m-%d} -> {s.index.max():%Y-%m-%d}")
     funds = load_fic_funds(cfg)
     print(
         f"fic      {len(funds):>6} rows  {funds['fecha_corte'].min():%Y-%m-%d} -> {funds['fecha_corte'].max():%Y-%m-%d}"

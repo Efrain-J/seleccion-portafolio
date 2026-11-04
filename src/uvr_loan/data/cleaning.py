@@ -10,7 +10,7 @@ from typing import Any
 import pandas as pd
 
 from uvr_loan.config import ROOT, load_assumptions
-from uvr_loan.data.sources import load_fic_funds, load_raw
+from uvr_loan.data.sources import load_etf_prices, load_fic_funds, load_raw
 
 log = logging.getLogger(__name__)
 
@@ -34,11 +34,38 @@ def build_monthly_panel(
     panel = pd.DataFrame({name: to_month_end(s) for name, s in raw.items()}).reindex(months)
     for col in pct_columns:
         panel[col] = panel[col] / 100
+    check_complete(panel)
+    return panel
 
+
+def check_complete(panel: pd.DataFrame) -> None:
+    """Raise ValueError naming the months with a missing value."""
     missing = panel[panel.isna().any(axis=1)]
     if not missing.empty:
         raise ValueError(f"Missing data in months: {', '.join(str(m) for m in missing.index)}")
-    return panel
+
+
+def etf_columns(
+    prices: dict[str, pd.Series], currencies: dict[str, str], trm: pd.Series, window: int
+) -> pd.DataFrame:
+    """Monthly `<name>_price_cop` and `<name>_vol_ea` of each ETF, indexed by monthly period.
+
+    `prices` are daily closes in each ETF's currency (COP or USD) and `trm` the daily COP per USD;
+    both take their month-end value, so a USD price is converted with the TRM of the same month (S17).
+    `<name>_vol_ea` is the standard deviation of the last `window` monthly returns in COP, times
+    sqrt(12): it only uses months up to its own, so it is known at the close of that month.
+    """
+    trm_m = to_month_end(trm)
+    columns = {}
+    for name, price in prices.items():
+        price_m = to_month_end(price)
+        if currencies[name] == "USD":
+            price_m = price_m * trm_m.reindex(price_m.index)
+        elif currencies[name] != "COP":
+            raise ValueError(f"Unsupported currency for {name}: {currencies[name]}")
+        columns[f"{name}_price_cop"] = price_m
+        columns[f"{name}_vol_ea"] = price_m.pct_change().rolling(window).std() * 12**0.5
+    return pd.DataFrame(columns)
 
 
 def _log_rows(rows: pd.DataFrame, reason: str) -> None:
@@ -104,7 +131,15 @@ def load_monthly_panel(cfg: dict[str, Any]) -> pd.DataFrame:
     raw = load_raw(cfg)
     raw["fic_index"] = build_fic_index(load_fic_funds(cfg), data["fic_source"]["max_daily_change"])
     panel = build_monthly_panel(raw, data["cdt_series"], data["start"][:7], str(end))
-    return panel.join(fic_returns(panel["fic_index"]))
+    currencies = {name: etf["currency"] for name, etf in data["etfs"].items()}
+    etfs = etf_columns(load_etf_prices(cfg), currencies, raw["trm_cop"], cfg["ldi"]["vol_window_months"])
+    panel = panel.join(fic_returns(panel["fic_index"])).join(etfs)
+    # The FIC returns start one month after the panel and the volatilities need `vol_window_months` of
+    # history (ICOLCAP starts in May 2013), so only the prices are checked before t0.
+    prices = [c for c in etfs.columns if c.endswith("_price_cop")]
+    check_complete(panel[prices])
+    check_complete(panel.loc[cfg["backtest"]["t0"] :, etfs.columns])
+    return panel
 
 
 if __name__ == "__main__":

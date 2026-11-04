@@ -1,6 +1,7 @@
 # Data sources
 
-Series used by the model, where they come from and how they are used. Downloaded on 2026-11-03 with
+Series used by the model, where they come from and how they are used. Downloaded on 2026-11-03 (the TRM and the ETFs
+from 2013 on 2026-11-04) with
 `python -m uvr_loan.data.sources` (code in `src/uvr_loan/data/sources.py`, IDs in `config/assumptions.yaml` under
 `data`). The raw files are cached in `data/raw/` and are not versioned.
 
@@ -13,10 +14,16 @@ Series used by the model, where they come from and how they are used. Downloaded
 | CDT 360 days | `cdt_360d_ea` | Banco de la República (SUAMECA), with Superfinanciera data | 68 | % effective annual, base 365 | Weekly | 1993-07-16 | `banrep_68.csv` |
 | DTF 90 days | `cdt_90d_ea` | Banco de la República (SUAMECA), with Superfinanciera data | 65 | % effective annual, base 365 | Weekly | 1984-01-20 | `banrep_65.csv` |
 | Money market FICs | `fic_index`, `fic_ret_m`, `fic_rate_ea` | Superintendencia Financiera (datos.gov.co) | `qhpu-8ixx` | Unit value (COP) and fund size per fund and share class | Daily | 2016-01-01 | `sfc_qhpu-8ixx_money_market.csv` |
-| iShares COLCAP ETF | `etf_price_cop` | Yahoo Finance | `ICOLCAP.CL` | COP, close adjusted for dividends | Daily (BVC trading days) | 2015-01-02 (requested range) | `yahoo_ICOLCAP.CL.csv` |
+| TRM | `trm_cop` | Banco de la República (SUAMECA), with Superfinanciera data | 1 | COP per USD | Daily | 1991-11-27 | `banrep_1.csv` |
+| iShares COLCAP ETF | `icolcap_price_cop`, `icolcap_vol_ea` | Yahoo Finance | `ICOLCAP.CL` | COP, close adjusted for dividends | Daily (BVC trading days) | 2013-05-02 | `yahoo_ICOLCAP.CL_2013-01-01.csv` |
+| iShares Core S&P 500 UCITS ETF (Acc) | `cspx_price_cop`, `cspx_vol_ea` | Yahoo Finance | `CSPX.L` | USD, close adjusted (accumulating fund); converted to COP with the TRM | Daily (LSE trading days) | 2013-01-02 (requested range) | `yahoo_CSPX.L_2013-01-01.csv` |
 
 In the monthly panel (`src/uvr_loan/data/cleaning.py`) every series takes its last value of each calendar month, and
-the rates are converted from % to decimals.
+the rates are converted from % to decimals. The ETFs (`data.etfs` in the config) are downloaded from
+`data.etf_history_start` (2013), before the rest of the panel, because `<name>_vol_ea` needs 36 months of returns
+before t0: it is the standard deviation of the last 36 monthly returns in COP times sqrt(12), using only months up to
+its own. A USD price is converted with the month-end TRM of the same month (`etf_columns`). The cache file name of an
+ETF includes the start date, so a cache downloaded with another start is not reused.
 
 ## Banco de la República – SUAMECA
 
@@ -37,6 +44,10 @@ the rates are converted from % to decimals.
 
 ### UVR (850)
 Value in COP of one UVR, certified by Banco de la República from the CPI. It converts the loan payments from UVR to COP.
+
+### TRM (1)
+Tasa Representativa del Mercado: COP per USD, computed by the Superintendencia Financiera from the previous business
+day's trades and published by BanRep. It converts the USD price of CSPX to COP (S17).
 
 ### CDT 180 days (67)
 Weighted average rate of 180-day CDTs. It is the rate of the CDT the conservative plan buys at each review, and of the
@@ -77,20 +88,32 @@ Weighted average rate of 90-day CDTs. It is the rate of the 3-month CDTs of plan
   change is the total return.
 - Do not confuse it with `ICOL` (iShares MSCI Colombia ETF, NYSE Arca, in USD): it tracks a different index and Yahoo
   no longer returns data for it.
+- Ticker `CSPX.L`: iShares Core S&P 500 UCITS ETF (Acc), domiciled in Ireland, USD line on the London Stock Exchange,
+  launched in 2010. It is accumulating (dividends are reinvested inside the fund), so its price is already the total
+  return net of the 15 % US withholding on dividends (Ireland–US treaty) and of its 0.07 % fee. The US-listed `IVV`
+  would assume dividends with no withholding, and a Colombian resident pays 30 % on them (no tax treaty).
+- Other Irish ETFs checked: `SSAC.L` (MSCI ACWI) and `SWDA.L` (MSCI World) are quoted in GBp on Yahoo, so they would
+  need a GBP→USD series; `SWDA.L` also has one daily change of 34 % that looks like a bad print. `VWRA.L` (Vanguard
+  FTSE All-World, USD) only starts in Jul-2019.
 
 ## Known issues
 
 - **ICOLCAP, Dec-2025:** the month-end close (2025-12-30) is 20,000, −4.7 % from the day before, with the day's low
   equal to the close; the price recovers to 20,480 and 20,994 in the next sessions. It may be a bad print, which would
-  understate Dec-2025 and overstate Jan-2026. It could not be confirmed with a second source. No current plan holds
-  the ETF.
+  understate Dec-2025 and overstate Jan-2026. It could not be confirmed with a second source. Plan 3 holds ICOLCAP, so
+  this may affect its Dec-2025 and Jan-2026 values, its volatility and its drawdown; it does not change the following
+  months.
 - **ICOLCAP, adjusted close:** Yahoo's adjusted close is rescaled back in time with every new dividend (the factor was
   0.658 in Oct-2016 at download time). Returns are consistent, but price levels change if the data is downloaded again;
   the cache in `data/raw/` keeps the results reproducible.
 - **ICOLCAP, 2024–2025:** Yahoo has no volume for many days (149 in 2024, 229 in 2025), but the prices are not stale:
   they change from day to day with real open/high/low values.
 - **Timing:** the weekly CDT rates are dated on Fridays, so the month-end value is the last Friday of the month (up to
-  6 days before the close). FIC unit values are published about one day after their date.
+  6 days before the close). FIC unit values are published about one day after their date. The London, Colombian and
+  US holidays differ, so the last trading day of a month can differ between CSPX, ICOLCAP and the TRM; the TRM of a
+  date also comes from the previous business day's trades. Both differences are small for a monthly model.
+- **ICOLCAP history on Yahoo** starts on 2013-05-02 (the ETF launched in 2011). That gives 36 monthly returns from
+  May-2016, before t0.
 
 - The BanRep server does not send its intermediate certificate, so Python's default certificate bundle fails with
   `CERTIFICATE_VERIFY_FAILED`. The download uses `truststore` (the operating system's certificate store), without
