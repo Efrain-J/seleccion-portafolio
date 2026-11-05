@@ -156,7 +156,7 @@ $E^{-}_m$ el valor del ETF a precio del mes $m$ antes de pagar.
 ## Plan 1 – Conservador
 
 Es una regla fija, no una optimización, y solo usa renta fija: FIC y CDT, sin renta variable (como el perfil
-conservador del plan del proyecto). No usa rentabilidades esperadas, volatilidades ni el indicador de cobertura: sirve
+conservador del plan del proyecto). No usa rentabilidades esperadas ni volatilidades: sirve
 como punto de comparación para los planes más elaborados.
 
 ### Instrumentos
@@ -199,12 +199,13 @@ con la UVR proyectada con $\pi_\tau = \pi^{\text{alto}}_\tau$ (`conservative.fic
 | CDT | $\theta\,(W_\tau - L_\tau)$, con $\theta$ = 90 % hoy |
 | FIC | el resto: $L_\tau + (1 - \theta)(W_\tau - L_\tau)$ |
 
-**Durante la gracia** (revisiones con $\tau$ < 36, antes de la primera cuota) no hay pagos, así que no hace falta
-colchón: se usa $\theta$ = 100 % (`conservative.grace_cdt_weight`) y todo el dinero va al CDT. Desde la revisión de
-oct-2019 se vuelve al 90 %.
+**Durante la gracia** no hay pagos: la primera cuota es la del mes 37 (nov-2019). En las revisiones con $\tau$ < 36
+(oct-2016 a abr-2019) no hace falta colchón: se usa $\theta$ = 100 % (`conservative.grace_cdt_weight`) y todo el
+dinero va al CDT. Desde la revisión de oct-2019 ($\tau$ = 36) se usa el 90 %.
 
-Si los pagos proyectados superan el dinero libre ($L_\tau > W_\tau$), todo va al FIC; la parte que no alcanza solo se
-convierte en déficit $D_m$ si al llegar el pago el FIC no lo cubre.
+Si los pagos proyectados superan el dinero libre ($L_\tau > W_\tau$), la fórmula del CDT daría un monto negativo: en
+ese caso el CDT recibe 0 y todo queda en el FIC. La parte que no alcanza solo se convierte en déficit $D_m$ si al
+llegar el pago el FIC no lo cubre.
 
 ### Entre revisiones (cada mes)
 
@@ -225,20 +226,24 @@ Así el FIC se ajusta a los pagos que vienen y el CDT vuelve a ser el 90 % del r
 
 ### Riesgo
 
-El 10 % que queda en el FIC además de $L_\tau$ funciona como colchón: el saldo mínimo del FIC en un mes de pago fue
-71,8M, y no hubo déficit. A cambio, ese dinero rinde lo del FIC y no lo del CDT. Poner también ese 10 % en el CDT
-durante la gracia sube la riqueza final de 696,9M a 701,0M: entre oct-2016 y oct-2019 el CDT a 180 días rindió en
-promedio 5,51 % frente a 4,82 % del FIC. Con el 10 % en ETF (versión anterior del plan) la riqueza final fue 734,8M:
-la diferencia viene sobre todo de 2025, cuando ICOLCAP subió 39 %, algo que no se sabía en 2016.
+- Sin meses con déficit y riqueza final de 701,0M.
+- El 10 % que queda en el FIC además de $L_\tau$ funciona como colchón: el saldo mínimo del FIC en un mes de pago fue
+  71,8M. A cambio, ese dinero rinde lo del FIC y no lo del CDT.
+- Con $\theta$ = 90 % también durante la gracia, la riqueza final sería 696,9M: entre oct-2016 y oct-2019 el CDT a 180
+  días rindió en promedio 5,51 % frente a 4,82 % del FIC.
+
+**Versión anterior:** con ese 10 % en ETF en lugar del FIC, la riqueza final fue 734,8M. La diferencia viene sobre
+todo de 2025, cuando ICOLCAP subió 39 %, algo que no se sabía en 2016.
 
 ### Simplificaciones propias del plan 1
 
-- **Plazo del CDT (S10):** se usa la tasa de 180 días aunque se pruebe $k$ = 3 o 12.
+- **Plazo del CDT (S10):** el CDT es siempre a 180 días. Con $k$ = 6 (el caso base) vence justo en la siguiente
+  revisión; si se prueba $k$ = 3 o 12, se sigue usando la tasa de 180 días como si el CDT venciera en $\tau + k$.
 - Además aplican los supuestos comunes.
 
 ### Qué decide la regla y qué no
 
-- **Dónde invertir:** los tres instrumentos son fijos, elegidos de antemano. La regla no compara alternativas.
+- **Dónde invertir:** los dos instrumentos son fijos, elegidos de antemano. La regla no compara alternativas.
 - **Cuánto:** lo fijan solo los pagos próximos (FIC), `cdt_weight` (CDT) y `grace_cdt_weight` (CDT durante la
   gracia). El 90 % es una elección, no el resultado de un cálculo.
 
@@ -259,16 +264,32 @@ rinden sus tasas **observadas** (BanRep e índice de FIC); solo la decisión usa
 
 ### Cómo se decide en cada revisión $\tau$
 
+En cada revisión se resuelve un LP que reparte el dinero libre entre el FIC y CDT a 3, 6 y 12 meses, de modo que los
+CDT venzan cuando llegan los pagos y quede la mayor cantidad posible de dinero al final del crédito.
+
 Los pagos están fijos en UVR, así que el LP trabaja en UVR. Como los CDT y el FIC pagan en pesos, el LP necesita su
 rendimiento en UVR, que no se conoce de antemano: usa el **esperado**, $\tilde r_j(\tau)$ y $\rho_\tau$, con
 $\pi_\tau = \pi^{\text{alto}}_\tau$ (`cdt_ladder.deflator_scenario`), que es el margen para el riesgo de que la
 inflación supere lo esperado.
 
-1. **Datos (en UVR):** los pagos $P_m$ de los meses $\tau+1, \dots, H$; lo que vence de los CDT vivos, $M_m$; el
-   dinero libre $B_\tau$; los rendimientos reales esperados $\tilde r_j(\tau)$ y $\rho_\tau$.
-2. **Variables:** $y_{s,j} \ge 0$ para $s \in \mathcal R_\tau$ y $s + j \le H$ (incluyen las reinversiones futuras
-   previstas); $y_{s,j} = 0$ en los demás casos. $c_m \ge 0$, caja al cierre de cada mes, después de pagar.
-3. **Problema:**
+**Qué está fijo y qué se decide en $\tau$:**
+
+- **Fijo (datos, en UVR):** los pagos $P_m$ de los meses $\tau+1, \dots, H$; lo que vence de los CDT vivos, $M_m$; el
+  dinero libre $B_\tau = W_\tau / \text{UVR}_\tau$; los rendimientos reales esperados $\tilde r_j(\tau)$ y
+  $\rho_\tau$.
+- **Se decide (variables):** las compras de hoy $y_{\tau,j}$; las compras previstas en las revisiones futuras
+  $y_{s,j}$, $s = \tau + k, \tau + 2k, \dots$ (solo si $s + j \le H$, es decir, si el CDT vence antes del final); y la
+  caja $c_m$ al cierre de cada mes, después de pagar.
+
+**Objetivo:** maximizar $c_H$, la caja que queda al final del crédito, en UVR, después de pagar todas las cuotas.
+
+**Por qué el LP incluye compras futuras.** Solo se ejecutan las compras de hoy. Sin las futuras, el dinero de un CDT
+corto que vence quedaría en la caja hasta el final, rindiendo $\rho_\tau$, y el LP subvaloraría los CDT cortos frente a
+los largos. Con ellas, el LP sabe que ese dinero se puede volver a invertir en CDT en la siguiente revisión. Para
+decidir, esas compras futuras se suponen a las tasas reales de hoy (ver "Simplificaciones"); no se ejecutan: en la
+siguiente revisión el LP se resuelve otra vez con los datos nuevos.
+
+**El problema:**
 
 $$
 \begin{aligned}
@@ -280,20 +301,51 @@ $$
 \end{aligned}
 $$
 
-   Por S12, lo que vence en $m$ sirve para $P_m$.
+Cómo se lee:
 
-4. **Desempate:** el LP suele tener varias soluciones con el mismo $c_H$ (sobre todo en la gracia, donde dos CDT a 6
-   meses seguidos rinden casi lo mismo que uno a 12). Por eso se resuelve en dos etapas: primero el máximo $c_H$, y
-   después, entre las soluciones que lo alcanzan (con una tolerancia de $10^{-9}\cdot\max(1, |c_H|)$ UVR), la que
-   minimiza
-   $\sum_j j\,y_{\tau,j}$, es decir, la compra de hoy con los plazos más cortos. Así la compra no depende del método
-   del solver.
-5. **Ejecución:** solo se compran los $y_{\tau,j}$ de hoy, convertidos a COP con $\text{UVR}_\tau$; $c_\tau$ queda en
-   el FIC. Cada CDT rinde después su tasa observada $r_j(\tau)$. En la siguiente revisión se vuelve a resolver con los
-   CDT vivos como $M_m$.
-6. **Sin escalera posible:** si el LP no tiene solución (con la inflación esperada, el dinero libre no alcanza para
-   todos los pagos), no se compra nada, todo queda en el FIC y los déficits se registran (S9). Cualquier otra falla del
-   solver detiene el backtest con un error, para que no se confunda con este caso.
+- **Primera restricción:** el presupuesto de hoy se reparte entre la caja y las compras de hoy, así que $c_\tau$ es la
+  caja que queda después de comprar.
+- **Una restricción por mes $m$:** la caja del mes es la del mes anterior, con su rendimiento, más lo que vence (CDT
+  comprados en el LP y CDT vivos), menos lo que se compra ese mes y menos el pago. Por S12, lo que vence en $m$ sirve
+  para $P_m$.
+- **$c_m \ge 0$:** la caja nunca es negativa, es decir, todos los pagos se cubren.
+- **Índices:** solo hay compras en los meses de revisión, así que $y_{s,j} = 0$ si $s \notin \mathcal R_\tau$ o si
+  $s + j > H$. En la restricción del mes $m$, $y_{m-j,j}$ es lo que vence (comprado en $m - j \ge \tau$) e $y_{m,j}$ lo
+  que se compra ese mes, después de pagar $P_m$.
+
+Si $B_\tau$ es menor que la menor cantidad que cubre todos los pagos con $c_m \ge 0$, el LP no tiene solución (esa
+cantidad mínima es el piso del plan 3).
+
+**Desempate:** si varias soluciones dejan la misma $c_H$ (pasa sobre todo en la gracia, donde dos CDT a 6 meses
+seguidos rinden casi lo mismo que uno a 12), se resuelve un segundo LP: entre las soluciones que alcanzan ese $c_H$, se
+minimiza $\sum_j j\,y_{\tau,j}$, es decir, se elige la compra de hoy con los plazos más cortos. Así la compra no depende
+del método del solver.
+
+**Ejecución:** de la solución del LP solo se llevan a la realidad las compras de hoy $y_{\tau,j}$, convertidas a COP con
+$\text{UVR}_\tau$, y $c_\tau$, que queda en el FIC. Las demás variables ($c_m$ para $m > \tau$ y las compras futuras)
+son un plan, no saldos reales: el saldo real del FIC es $F_m$, en COP. Cada CDT rinde después su tasa observada
+$r_j(\tau)$.
+
+**Sin escalera posible:** si el LP no tiene solución, no se compra nada, todo queda en el FIC y los déficits se
+registran (S9). Cualquier otra falla del solver detiene el backtest con un error, para que no se confunda con este
+caso.
+
+### Cómo cambia el LP de una revisión a la siguiente
+
+En la revisión $\tau + k$ se arma un LP nuevo con la misma forma:
+
+- el horizonte empieza en el nuevo $\tau$, así que hay menos meses y menos fechas de compra;
+- los CDT comprados antes que siguen vivos entran como vencimientos fijos $M_m$;
+- el presupuesto es el dinero libre nuevo;
+- las tasas $r_j$ y el rendimiento del FIC son los observados en el nuevo $\tau$, y la inflación esperada se calcula
+  otra vez.
+
+### Entre revisiones (cada mes)
+
+- El FIC crece con su rentabilidad realizada del mes, $r^{\text{FIC}}_m$.
+- Cada CDT crece a la tasa fijada al comprarlo, $r_j(\tau)$, y al vencer entra al FIC.
+- Se paga la cuota del mes en COP, $P_m\,\text{UVR}_m$ (con la UVR **observada**), sacándola del FIC. Como el plan 2
+  no tiene ETF, lo que falte es el déficit $D_m$.
 
 ### Ejemplos (backtest con datos reales)
 
@@ -308,11 +360,12 @@ vivos.
 
 ### Riesgo
 
-Los CDT son de tasa fija: si la inflación supera la esperada, los pagos en COP crecen más que el dinero. Con la
-inflación alta, el backtest tiene 2 meses con déficit, ambos muy pequeños: jun-2021 (38.611 COP) y jun-2022
-(9.503 COP), 48.114 COP en total. En abr-2026 no hubo escalera posible y el dinero quedó en el FIC. La riqueza final es
-780,1M; descontando los pagos que quedaron sin cubrir, la riqueza neta también es 780,1M. Con la inflación base había
-9 meses con déficit (1,18M COP) y la riqueza final era 782,3M.
+- Los CDT son de tasa fija: si la inflación supera la esperada, los pagos en COP crecen más que el dinero.
+- Con la inflación alta, el backtest tiene 2 meses con déficit, ambos muy pequeños: jun-2021 (38.611 COP) y jun-2022
+  (9.503 COP), 48.114 COP en total.
+- En abr-2026 no hubo escalera posible y el dinero quedó en el FIC.
+- La riqueza final es 780,1M; descontando los pagos que quedaron sin cubrir, la riqueza neta también es 780,1M.
+- Con la inflación base había 9 meses con déficit (1,18M COP) y la riqueza final era 782,3M.
 
 ### Simplificaciones propias del plan 2
 
@@ -321,32 +374,41 @@ inflación alta, el backtest tiene 2 meses con déficit, ambos muy pequeños: ju
 - **Pronóstico de la caja (S15):** para decidir, el LP supone que el FIC seguirá rindiendo, durante todo el horizonte,
   lo mismo que rindió el último mes, anualizado ($\bar r^{\text{FIC}}_\tau$). Así obtiene $\rho_\tau$ y lo compara con
   los CDT. Como la caja y los CDT se descuentan con la misma inflación, preferir la caja depende solo de comparar
-  $\bar r^{\text{FIC}}_\tau$ con las $r_j(\tau)$ del día. Evaluado contra lo que pasó en los 6 meses siguientes a cada
-  revisión:
-  - acierta en 17 de 20 revisiones cuál rinde más, la caja o el CDT a 180 días. Falla en abr-2020 (prácticamente un
-    empate) y en abr-2022 y oct-2022, cuando el BanRep subía tasas y el FIC, que sigue las tasas mes a mes, le ganó a
-    los CDT comprados a la tasa anterior;
-  - el error absoluto medio del rendimiento nominal del FIC es 1,29 p.p. y tiende a subestimarlo (−0,78 p.p. en
-    promedio) cuando las tasas suben; el mayor error fue 5,87 p.p. en oct-2022;
-  - el error de $\rho_\tau$ es mayor, 3,57 p.p. en promedio, y viene sobre todo de la inflación, no del FIC: el
-    escenario alto lo sesga a propósito hacia abajo (−3,44 p.p. en promedio, es decir, es pesimista); con la base
-    sería 2,30 p.p.;
-  - **si el último mes del FIC fue negativo**, $\rho_\tau$ queda muy negativo (oct-2021:
-    $\bar r^{\text{FIC}}_\tau$ = −0,91 %, $\rho_\tau$ = −8,81 %). El LP no falla: guarda en caja solo lo
-    indispensable, aparta un poco más para compensar la pérdida esperada y pone
-    el resto en CDT. Después de oct-2021 el FIC rindió +2,69 %, así que el pronóstico fue pesimista, sin costo. El
-    caso que sí puede afectar es el contrario (pronóstico positivo y mes real negativo), en el que la caja queda un
-    poco corta; el índice solo tuvo 4 meses negativos en 10 años (el peor, −0,16 %). No se pone un piso al pronóstico.
+  $\bar r^{\text{FIC}}_\tau$ con las $r_j(\tau)$ del día. Ver la validación abajo.
+- **Compras futuras a las tasas de hoy:** el LP supone que las compras de revisiones futuras se harán a las tasas
+  reales de hoy; en cada revisión se corrige con las tasas nuevas.
 - Además aplican los supuestos comunes.
+
+### Validación del pronóstico de la caja
+
+Evaluado contra lo que pasó en los 6 meses siguientes a cada revisión:
+
+- acierta en 17 de 20 revisiones cuál rinde más, la caja o el CDT a 180 días. Falla en abr-2020 (prácticamente un
+  empate) y en abr-2022 y oct-2022, cuando el BanRep subía tasas y el FIC, que sigue las tasas mes a mes, le ganó a
+  los CDT comprados a la tasa anterior;
+- el error absoluto medio del rendimiento nominal del FIC es 1,29 p.p. y tiende a subestimarlo (−0,78 p.p. en
+  promedio) cuando las tasas suben; el mayor error fue 5,87 p.p. en oct-2022;
+- el error de $\rho_\tau$ es mayor, 3,57 p.p. en promedio, y viene sobre todo de la inflación, no del FIC: el
+  escenario alto lo sesga a propósito hacia abajo (−3,44 p.p. en promedio, es decir, es pesimista); con la base
+  sería 2,30 p.p.;
+- **si el último mes del FIC fue negativo**, $\rho_\tau$ queda muy negativo (oct-2021:
+  $\bar r^{\text{FIC}}_\tau$ = −0,91 %, $\rho_\tau$ = −8,81 %). El LP no falla: guarda en caja solo lo
+  indispensable, aparta un poco más para compensar la pérdida esperada y pone el resto en CDT. Después de oct-2021 el
+  FIC rindió +2,69 %, así que el pronóstico fue pesimista, sin costo. El caso que sí puede afectar es el contrario
+  (pronóstico positivo y mes real negativo), en el que la caja queda un poco corta; el índice solo tuvo 4 meses
+  negativos en 10 años (el peor, −0,16 %). No se pone un piso al pronóstico.
 
 ## Plan 3 – LDI: piso en CDT y crecimiento en ETF
 
-Separa el dinero en dos partes, como en la inversión guiada por los pasivos (*liability-driven investment*, LDI): una
-**parte de cobertura**, la escalera de CDT del plan 2, que cubre todos los pagos que faltan, y una **parte de
-crecimiento**, en ETF de renta variable, con solo el dinero que sobra por encima de esa cobertura. Es la forma más
-simple de la regla CPPI (*constant proportion portfolio insurance*) con multiplicador $\kappa = 1$: los ETF reciben la
-parte de crecimiento $G_\tau$, que es lo que sobra sobre el piso con un 5 % de margen, así que una caída de los ETF,
-incluso del 100 %, nunca toca el dinero de los pagos.
+Es un plan de inversión guiada por los pasivos (*liability-driven investment*, LDI). Divide el dinero en dos partes:
+
+1. **Una parte protegida:** una escalera de CDT (la del plan 2) que cubre **todos** los pagos que faltan del crédito.
+2. **Una parte de crecimiento:** acciones (ICOLCAP y CSPX), compradas solo con el dinero que sobra por encima de esa
+   protección.
+
+Los ETF solo reciben dinero que sobra sobre la protección. Por eso, aunque los ETF perdieran el 100 %, la escalera
+seguiría pagando el crédito. Es la forma más simple de la regla CPPI (*constant proportion portfolio insurance*),
+con multiplicador $\kappa = 1$.
 
 ### Instrumentos
 
@@ -376,9 +438,19 @@ inversionista colombiano. Los TES (UVR y tasa fija) quedan como tema pendiente p
 | $\Phi_\tau$ | Indicador de cobertura del portafolio completo: $(W_\tau + V_\tau) / (\Pi_\tau + V_\tau)$. Solo se reporta; no interviene en la decisión | – | columna `funding_ratio_total` |
 | $\sigma_i(\tau)$ | Volatilidad anual del ETF $i$: desviación estándar muestral de sus últimos 36 rendimientos mensuales en COP × $\sqrt{12}$ (YAML `data.vol_window_months`) | decimal | columnas `<nombre>_vol_ea` |
 
-### Cómo se decide en cada revisión $\tau$
+### Qué pasa en cada revisión $\tau$ (cada 6 meses)
 
-1. **Piso.** Es el LP del plan 2 con el presupuesto como variable, minimizando:
+**Paso 1: calcular el piso.** El piso $\Pi_\tau$ es la menor cantidad de dinero que, invertida en una escalera de CDT
+a 3, 6 y 12 meses más el FIC, cubre **todos** los pagos que faltan hasta el final del crédito. Lo calcula un programa
+lineal (LP) en UVR, la unidad del crédito:
+
+- Usa las tasas de CDT de hoy, pasadas a rendimientos reales (descontando la inflación) con el escenario de inflación
+  **alto**, $\pi^{\text{alto}}_\tau$. Eso da un margen por si la inflación es mayor que la esperada.
+- Los CDT comprados en revisiones anteriores que todavía no vencen cuentan como dinero ya reservado: el piso solo
+  cubre lo que ellos no cubren.
+
+Es el LP del plan 2 con el objetivo cambiado: en vez de maximizar $c_H$ con el presupuesto dado, el presupuesto $B$
+es una variable más y se minimiza, exigiendo igual que todos los pagos se cubran ($c_m \ge 0$):
 
 $$
 \begin{aligned}
@@ -390,27 +462,54 @@ B^{\min}_\tau = \min_{B,\,y,\,c} \quad & B \\
 \end{aligned}
 $$
 
-   Las tasas reales esperadas $\tilde r_j(\tau)$ y $\rho_\tau$ se calculan con $\pi_\tau = \pi^{\text{alto}}_\tau$
-   (`ldi.floor_scenario`), que es el margen para el riesgo de que la inflación supere lo esperado: los CDT son de tasa
-   fija y los pagos están en UVR. Como en el plan 2, las compras futuras se suponen a las tasas reales de hoy y los CDT
-   vivos entran como vencimientos conocidos $M_m$. El piso es lo que de verdad costaría la escalera, así que no hace
-   falta una curva real para descontar los pagos.
-2. **Escalera.** Recibe $\min\bigl(W_\tau,\ (1 + b)\,\Pi_\tau\bigr)$ y se resuelve con el LP del plan 2
-   (`ladder_purchases`, mismas tasas del escenario alto). Si $W_\tau$ es menor que el piso no hay escalera posible:
-   el dinero queda en el FIC y los déficits se registran, como en el plan 2.
-3. **Crecimiento.** $G_\tau = W_\tau - \min\bigl(W_\tau,\ (1 + b)\,\Pi_\tau\bigr)$, es decir, lo que sobra sobre el
-   piso con el margen, repartido entre los ETF en proporción inversa a su volatilidad:
+con $\pi_\tau = \pi^{\text{alto}}_\tau$ (`ldi.floor_scenario`) en $\tilde r_j(\tau)$ y $\rho_\tau$, y
+$\Pi_\tau = B^{\min}_\tau\,\text{UVR}_\tau$. El piso es lo que de verdad costaría la escalera, así que no hace falta
+una curva real para descontar los pagos.
+
+**Paso 2: comprar la escalera.** La escalera recibe $\min\bigl(W_\tau,\ (1 + b)\,\Pi_\tau\bigr)$: normalmente
+$(1 + b)\,\Pi_\tau$, el piso más un margen $b$ = 5 %. Con ese presupuesto se resuelve el LP del plan 2
+(`ladder_purchases`, mismas tasas del escenario alto). No basta con comprar la solución del LP del piso, porque esa
+solución gasta exactamente $\Pi_\tau$: el margen también hay que invertirlo, y el LP del plan 2 decide cómo se reparte
+todo el presupuesto, margen incluido, entre los plazos de CDT y el FIC (una parte pequeña queda en el FIC para los
+meses entre vencimientos). $W_\tau$ no incluye los CDT vivos: ellos ya están descontados del piso como vencimientos
+$M_m$, por eso se compara $W_\tau$ con el piso.
+
+**Paso 3: poner el resto en acciones.** Todo lo que pasa de $(1 + b)\,\Pi_\tau$ va a los ETF:
+
+$$
+G_\tau = \kappa\,\Bigl[W_\tau - \min\bigl(W_\tau,\ (1 + b)\,\Pi_\tau\bigr)\Bigr], \qquad \kappa = 1
+$$
+
+Con $\kappa = 1$ los ETF reciben exactamente lo que sobra, nunca dinero de la escalera.
+
+y se reparte en proporción inversa a la volatilidad (el ETF menos volátil recibe más, así cada uno aporta más o menos
+el mismo riesgo):
 
 $$
 w_i = \frac{1/\sigma_i(\tau)}{\sum_{l \in \mathcal A} 1/\sigma_l(\tau)}, \qquad i \in \mathcal A
 $$
 
-   Con estos pesos, $w_i\,\sigma_i(\tau)$ es igual para todos los ETF. Con dos ETF eso además significa que cada uno
-   aporta el mismo riesgo al portafolio de crecimiento, sin importar la correlación (paridad de riesgo); con más de dos
-   solo es cierto si todas las correlaciones son iguales. Las volatilidades se calculan con datos hasta $\tau$
-   (ICOLCAP desde mayo de 2013 y CSPX desde 2013), así que en oct-2016 ya hay 36 meses.
+Con estos pesos, $w_i\,\sigma_i(\tau)$ es igual para todos los ETF. Con dos ETF eso significa que cada uno aporta el
+mismo riesgo a la parte de crecimiento, sin importar la correlación (paridad de riesgo); con más de dos solo es cierto
+si todas las correlaciones son iguales. Se venden o compran ETF hasta que cada uno tenga $w_i\,G_\tau$.
 
-Entre revisiones, los pagos salen del FIC y de los CDT que vencen; si no alcanzan, se venden ETF a prorrata (S9).
+Las volatilidades usan los últimos 36 meses de datos conocidos en $\tau$ (ICOLCAP desde mayo de 2013 y CSPX desde
+2013, así que en oct-2016 ya hay 36 meses).
+
+**La parte en ETF no es un monto fijo: se recalcula en cada revisión.** En cada revisión se suman el FIC y el valor de
+mercado de los ETF (el dinero libre $W_\tau$), se calcula el piso nuevo y se reparte todo otra vez. Si la escalera
+necesita más dinero, sale de vender ETF. Si los ETF subieron, la ganancia se queda en ETF, porque el piso solo depende
+de los pagos. Como cada cuota pagada baja el piso, todo lo que el piso libera va a los ETF, y por eso la parte en ETF
+crece con el tiempo.
+
+**La parte en ETF puede ser cero.** Si $W_\tau$ es menor que $(1 + b)\,\Pi_\tau$, no va nada a los ETF. Si es
+menor que el piso, no hay escalera posible: todo queda en el FIC y los déficits se registran, como en el plan 2. Con
+los datos reales esto no pasó.
+
+### Entre revisiones (cada mes)
+
+El pago del mes sale del FIC y de los CDT que vencen. Los ETF se mantienen sin rebalancear y solo se venden (a
+prorrata, S9) si el FIC y los CDT no alcanzan.
 
 ### Ejemplos (backtest con datos reales)
 
@@ -425,6 +524,11 @@ iguales (50,5 % y 49,5 %). En oct-2019 $W_\tau$ no incluye los CDT comprados ant
 la escalera nueva suma 513,6M en CDT y 11,0M en el FIC); por eso el piso es menor que en 2016 aunque faltan los mismos
 pagos.
 
+### La propiedad principal
+
+La propiedad de la introducción (una caída de los ETF no llega al dinero de los pagos) la comprueba un test: los ETF
+pierden 99 % y no falta ningún pago (`test_a_crash_of_the_etfs_does_not_reach_the_payments`).
+
 ### Riesgo y resultados
 
 - Sin meses con déficit. Dos veces el FIC quedó corto por muy poco y se vendieron ETF: jun-2021 (41.468 COP) y jun-2022
@@ -432,9 +536,11 @@ pagos.
 - Riqueza final 1.352,5M (plan 1: 701,0M; plan 2: 780,1M). Rentabilidad anual 11,9 %, volatilidad 8,3 %, máxima caída
   7,1 % (los planes 1 y 2 tienen volatilidad cercana a 1 % y no tienen caídas).
 - **Cuidado con leer el resultado como una predicción.** Buena parte de la diferencia viene de 2024–2025, cuando
-  ICOLCAP y el S&P 500 subieron mucho, algo que no se sabía en 2016. Además, a medida que se pagan las cuotas el piso
-  baja y la parte en ETF crece: en abr-2026 los ETF eran el 96 % del dinero. La protección de los pagos no depende de
-  eso (siempre está la escalera con 1,05 × piso), pero la riqueza final sí depende del mercado accionario.
+  ICOLCAP y el S&P 500 subieron mucho, algo que no se sabía en 2016. La protección de los pagos no depende de eso
+  (siempre está la escalera con $(1 + b)$ × piso), pero la riqueza final sí depende del mercado accionario.
+- **El riesgo no entra en la decisión.** Todo lo que sobra sobre el piso va a los ETF, sin un tope y sin mirar cómo
+  van: la parte en ETF sube de 42 % del dinero en oct-2016 a 96 % en abr-2026. Lo que el plan 3 garantiza es el pago
+  de las cuotas, no la riqueza.
 - $\Phi_\tau$ suma el valor de los CDT vivos arriba y abajo. Así no salta cuando hay CDT vivos (el piso del dinero libre
   baja porque ellos cubren parte de los pagos, e incluso llega a 0 cuando los cubren todos) y no divide por cero
   mientras queden pagos. Con $k = 6$ su menor valor fue 1,64 (abr-2017) y sube a medida que se pagan las cuotas:
