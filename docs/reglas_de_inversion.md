@@ -1,7 +1,8 @@
 # Reglas de inversión
 
 Cómo se decide dónde y cuánto invertir en cada plan: el **plan 1 (conservador)**, el **plan 2 (escalera de CDT
-optimizada)** y el **plan 3 (LDI: piso en CDT y crecimiento en ETF)**.
+optimizada)**, el **plan 3 (LDI: piso en CDT y crecimiento en ETF)** y el **plan 4 (plan 3 con filtro de
+tendencia)**. Al final, una prueba de estrés repite el backtest con ETF que pierden dinero.
 
 **Criterio de los resultados.** Las decisiones pueden usar estimaciones (por ejemplo, la inflación esperada), siempre
 con datos conocidos en la fecha de la revisión. El dinero reportado sale solo de rendimientos observados de
@@ -9,7 +10,7 @@ instrumentos reales (tasas de CDT del BanRep, el índice de FIC de la Superfinan
 ningún resultado es una cota ni usa un rendimiento supuesto.
 
 Los códigos S1–S19 son los supuestos del proyecto, listados en
-[`plan_proyecto_credito_uvr.md`](../plan_proyecto_credito_uvr.md).
+[`plan_proyecto_credito_uvr.md`](plan_proyecto_credito_uvr.md).
 
 Código: `conservative_allocation`, `ladder_purchases`, `ladder_floor` e `inverse_volatility_weights` en
 `src/uvr_loan/portfolio.py`. Simulación: `src/uvr_loan/backtest.py` (un plan por estrategia, en `PLANS`).
@@ -80,7 +81,7 @@ la inflación de esos 6 meses; en $\tau = 0$ usa la UVR de abr-2016, anterior a 
 
 **Escenario de inflación de los planes.** Los planes deciden con
 $\pi_\tau = \pi^{\text{alto}}_\tau = \pi^{\text{base}}_\tau + 0{,}03$: es el margen para el riesgo de que la inflación
-supere lo esperado. Los tres usan el mismo, para que sus resultados se puedan comparar. La base es la referencia del
+supere lo esperado. Todos usan el mismo, para que sus resultados se puedan comparar. La base es la referencia del
 escenario alto; el código también calcula un escenario bajo ($\pi^{\text{base}}_\tau - 0{,}015$), que ningún plan
 usa.
 
@@ -89,6 +90,7 @@ usa.
 | 1 | $\pi^{\text{alto}}_\tau$ | Proyectar los pagos que guarda el FIC | `conservative.fic_sizing_scenario` |
 | 2 | $\pi^{\text{alto}}_\tau$ | Pasar las tasas nominales a reales en el LP | `cdt_ladder.deflator_scenario` |
 | 3 | $\pi^{\text{alto}}_\tau$ | Calcular el piso y comprar la escalera | `ldi.floor_scenario` |
+| 4 | $\pi^{\text{alto}}_\tau$ | Igual que el plan 3 | `ldi.floor_scenario` |
 
 Nota: el test `test_plans_use_the_same_inflation_scenario` (`tests/test_inflation.py`) avisa si las tres claves del
 YAML difieren.
@@ -564,6 +566,98 @@ abr-2026.
 - **Sin regla para asegurar ganancias:** aunque $\Phi_\tau$ sea alto, no se pasa dinero de los ETF a la escalera.
 - **Sin cobertura cambiaria (S19)**, venta inmediata (S16) y conversión a la TRM (S17).
 - Además aplican los supuestos comunes.
+
+## Plan 4 – LDI con filtro de tendencia
+
+Es el [plan 3](#plan-3--ldi-piso-en-cdt-y-crecimiento-en-etf) con un solo cambio, en la parte de crecimiento: un ETF
+que viene perdiendo no recibe dinero, y su parte queda en el FIC. Todo lo que no se describe aquí es igual al plan 3.
+
+### Instrumentos
+
+Los mismos del plan 3.
+
+### Notación del plan 4
+
+Además de la del plan 3:
+
+| Símbolo | Significado | Unidad | En el código |
+|---|---|---|---|
+| $g_i(\tau)$ | Rendimiento del ETF $i$ en los últimos 12 meses, en COP, conocido en $\tau$: $P_i(\tau) / P_i(\tau - 12) - 1$, con $P_i$ el precio del ETF | decimal | columnas `<nombre>_trend_ret`, YAML `data.trend_window_months` |
+| $\underline g$ | Rendimiento mínimo para recibir dinero (0) | decimal | YAML `trend_ldi.min_trailing_return` |
+
+### En cada revisión $\tau$
+
+**Pasos 1 y 2:** iguales al plan 3 (piso y escalera).
+
+**Paso 3 (cambia):** $G_\tau$ y los pesos $w_i$ se calculan como en el plan 3. El ETF $i$ recibe $w_i\,G_\tau$ solo si
+$g_i(\tau) \ge \underline g$; si no, esa parte queda en el FIC. No se le pasa al otro ETF, para que un ETF que pierde no
+aumente la exposición al otro. Si los dos fallan, todo $G_\tau$ queda en el FIC. En la siguiente revisión se vuelve a
+evaluar: un ETF vuelve cuando su $g_i$ es otra vez $\ge \underline g$.
+
+Código: `trend_ldi_strategy` en `src/uvr_loan/backtest.py`.
+
+### Entre revisiones (cada mes)
+
+Igual que el plan 3.
+
+### Ejemplos (backtest con datos reales)
+
+Revisiones en que el filtro dejó un ETF por fuera:
+
+| Revisión | ICOLCAP $g$ | CSPX $g$ | Fuera | Parte en ETF |
+|---|---|---|---|---|
+| abr-2020 | −23,5 % | +23,9 % | ICOLCAP | 28 % |
+| oct-2020 | −25,6 % | +24,7 % | ICOLCAP | 32 % |
+| oct-2022 | −9,2 % | +8,7 % | ICOLCAP | 39 % |
+| abr-2023 | −19,0 % | +17,3 % | ICOLCAP | 38 % |
+| oct-2023 | −3,5 % | −8,0 % | los dos | 0 % |
+
+### Riesgo y resultados
+
+- Sin meses con déficit.
+- Riqueza final 1.211,5M. Rentabilidad anual 11,0 %, volatilidad 7,7 %, máxima caída 7,1 %.
+- **Limitaciones del filtro:** solo ve pérdidas que ya pasaron (los últimos 12 meses) y decide cada $k$ meses: puede
+  sacar un ETF después de la caída y volver a comprarlo después de la subida. No pone un tope a la parte en ETF.
+
+### Simplificaciones propias del plan 4
+
+Las mismas del plan 3.
+
+## Prueba de estrés: ETF con mal desempeño
+
+`python -m uvr_loan.stress` (`src/uvr_loan/stress.py`) repite el backtest de los planes 2, 3 y 4 cambiando solo los
+precios de los ETF desde $t_0$; tasas, UVR, FIC y pagos son los observados. Resultados en `results/stress_summary.csv`.
+
+| Escenario | Cómo se construye |
+|---|---|
+| Real | Precios observados |
+| ETF −50 % | Cada ETF conserva sus rendimientos mensuales observados menos una constante, y termina en 50 % de su precio de oct-2016 |
+| ETF −80 % | Igual, terminando en 20 % |
+| Caída −60 % | Precios observados hasta oct-2019 (la revisión antes de la primera cuota), caída de 60 % en nov-2019 y precios planos después |
+
+El rendimiento de 12 meses $g_i(\tau)$ del plan 4 se recalcula con los precios del escenario. Las volatilidades
+$\sigma_i(\tau)$ quedan las observadas: solo cambian el reparto entre los dos ETF.
+
+**Riqueza neta final** (después de pagar el crédito y de restar lo que quedó sin pagar):
+
+| Escenario | Plan 2 | Plan 3 | Plan 4 |
+|---|---|---|---|
+| Real | 780,1M | 1.352,5M | 1.211,5M |
+| ETF −50 % | 780,1M | 252,0M | 432,3M |
+| ETF −80 % | 780,1M | 128,1M | 421,9M |
+| Caída −60 % | 780,1M | 254,3M | 272,5M |
+
+**Máxima caída:**
+
+| Escenario | Plan 2 | Plan 3 | Plan 4 |
+|---|---|---|---|
+| Real | 0 | 7,1 % | 7,1 % |
+| ETF −50 % | 0 | 11,9 % | 6,3 % |
+| ETF −80 % | 0 | 14,4 % | 8,2 % |
+| Caída −60 % | 0 | 28,5 % | 28,5 % |
+
+**Meses con déficit:** 0 para los planes 3 y 4 en todos los escenarios; 2 para el plan 2 en todos (no tiene ETF, así
+que los escenarios no lo cambian).
 
 ## Referencias bibliográficas
 

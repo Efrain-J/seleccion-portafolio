@@ -19,7 +19,7 @@ HORIZON = 24
 TERMS = {3: "cdt_90d_ea", 6: "cdt_180d_ea", 12: "cdt_360d_ea"}
 PAYMENTS = {m: 20.0 + m for m in range(7, HORIZON + 1)} | {12: 120.0}
 ETFS = ["icolcap", "cspx"]
-ALL_PLANS = ["conservative", "cdt_ladder", "ldi"]
+ALL_PLANS = ["conservative", "cdt_ladder", "ldi", "trend_ldi"]
 
 
 def varied_panel(cfg, seed=0):
@@ -35,6 +35,7 @@ def varied_panel(cfg, seed=0):
     for name in ETFS:
         panel[f"{name}_price_cop"] = 100 * np.cumprod(1 + rng.normal(0, 0.05, n))
         panel[f"{name}_vol_ea"] = rng.uniform(0.1, 0.3, n)
+        panel[f"{name}_trend_ret"] = rng.uniform(-0.2, 0.3, n)  # some reviews filter an ETF out
     return panel
 
 
@@ -52,6 +53,7 @@ def scramble_after(panel, cfg, cut):
     for name in ETFS:
         bad.loc[late, f"{name}_price_cop"] *= 0.1
         bad.loc[late, f"{name}_vol_ea"] = rng.uniform(0.01, 1.0, k)
+        bad.loc[late, f"{name}_trend_ret"] = rng.uniform(-1.0, 1.0, k)
     return bad
 
 
@@ -102,7 +104,17 @@ def vol_leak(current, tau, history, free_cop, lots, payment_schedule, cfg):
     return alloc._replace(etf_cop=etfs)
 
 
-@pytest.mark.parametrize("leak", [uvr_leak, vol_leak], ids=["plan-1-uvr", "plan-3-volatility"])
+def trend_leak(current, tau, history, free_cop, lots, payment_schedule, cfg):
+    """Plan 4 that applies its filter with next month's trailing return."""
+    future = current["panel"].loc[history.index[-1] + 1]  # the leak
+    today = history.iloc[[-1]].assign(**{f"{n}_trend_ret": future[f"{n}_trend_ret"] for n in ETFS})
+    peeked = pd.concat([history.iloc[:-1], today])
+    return backtest.trend_ldi_strategy(tau, peeked, free_cop, lots, payment_schedule, cfg)
+
+
+@pytest.mark.parametrize(
+    "leak", [uvr_leak, vol_leak, trend_leak], ids=["plan-1-uvr", "plan-3-volatility", "plan-4-trend"]
+)
 def test_the_lookahead_test_catches_a_leak(monkeypatch, cfg, schedule, leak):
     """A plan that peeks at next month's data must make the perturbation test fail."""
     panel = varied_panel(cfg)

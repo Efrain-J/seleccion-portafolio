@@ -52,4 +52,6 @@ def test_plans_use_the_same_inflation_scenario(cfg):
         "ldi.floor_scenario": cfg["ldi"]["floor_scenario"],
     }
     if len(set(used.values())) > 1:
-        warnings.warn(f"The plans use different inflation scenarios, their results are not comparable: {used}")
+        warnings.warn(
+            f"The plans use different inflation scenarios, their results are not comparable: {used}", stacklevel=2
+        )

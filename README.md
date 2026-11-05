@@ -97,7 +97,9 @@ program in UVR that covers every remaining payment and maximizes the final wealt
 returns (deflated with the high inflation scenario, like plans 1 and 3), and the results use the observed CDT rates. Plan 3 (LDI) computes a floor, the smallest budget of that same
 LP that covers every remaining payment under high inflation, gives the CDT ladder 1.05 × floor and puts the rest in
 ICOLCAP and CSPX, split by inverse volatility (CPPI with multiplier 1: a fall of the ETFs never reaches the money for
-the payments). Every reported peso comes from observed data. The base inflation of the
+the payments). Plan 4 (`trend_ldi`) is plan 3 with a trend filter: an ETF whose return over the last
+`data.trend_window_months` (12) months is negative at a review gets no money, and its share stays in the FIC.
+Every reported peso comes from observed data. The base inflation of the
 scenarios is the UVR inflation of the last `base_lookback_months` months known at each review. The full rules, with
 notation, examples and simplifications, are in [`docs/reglas_de_inversion.md`](docs/reglas_de_inversion.md).
 
@@ -118,6 +120,13 @@ net wealth deducts the accumulated shortfall, since an unpaid payment is still o
 FIC + ETF: a payment is
 taken from the FIC first and then from ETF units sold at that month's price; only what both cannot cover is recorded
 as shortfall. CDTs are never redeemed early.
+
+Run the stress test (plans 2, 3 and 4 when only the ETF prices change: −50 % and −80 % in 10 years, and a 60 % fall
+in nov-2019 with no recovery); it writes `results/stress_summary.csv`:
+
+```
+.venv\Scripts\python -m uvr_loan.stress
+```
 
 The notebook `notebooks/backtest_plans.ipynb` plots the wealth and the FIC liquidity of every plan and the real versus
 projected UVR.
@@ -148,7 +157,8 @@ Current structure. Planned additions (diagnosis, stress tests, report figures) a
 │   ├── inflation.py          # Base inflation (last 6 months of the UVR), scenarios and projected UVR
 │   ├── cashflows.py          # Review months and loan payments converted from UVR to COP
 │   ├── portfolio.py          # Plan 1 rule, plan 2 LP (ladder_purchases), plan 3 floor and ETF weights
-│   └── backtest.py           # Monthly simulation of every plan (PLANS) and summary metrics
+│   ├── backtest.py           # Monthly simulation of every plan (PLANS) and summary metrics
+│   └── stress.py             # Stress test: plans 2-4 when the ETF prices fall
 ├── results/                  # Backtest outputs (CSV)
 └── tests/                    # pytest suite
 ```

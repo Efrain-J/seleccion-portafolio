@@ -12,7 +12,9 @@ def make_cfg(cdt_weight=0.90, horizon=12, k=6, terms=None, grace_months=0):
         "inflation_scenarios": {"base_lookback_months": 6, "high_shock_pp": 0.0, "low_shock_pp": 0.0},
         "cdt_ladder": {"deflator_scenario": "base", "term_columns": terms or {6: "cdt_180d_ea"}},
         "ldi": {"floor_scenario": "base", "floor_buffer": 0.05, "growth_assets": ["icolcap", "cspx"]},
+        "trend_ldi": {"min_trailing_return": 0.0},
         "data": {
+            "trend_window_months": 12,
             "etfs": {
                 "icolcap": {"ticker": "ICOLCAP.CL", "currency": "COP"},
                 "cspx": {"ticker": "CSPX.L", "currency": "USD"},
@@ -35,12 +37,14 @@ def make_panel(
     cspx=100.0,
     icolcap_vol=0.20,
     cspx_vol=0.20,
+    icolcap_trend=0.0,
+    cspx_trend=0.0,
 ):
     """Monthly panel from t0 - HISTORY to the end of the horizon.
 
     Each column is a scalar or a list of horizon + 1 values (months 0..horizon); the history
     before t0 repeats the value of month 0. `etf` is the price of ICOLCAP and `cspx` the price of
-    the second ETF, both in COP.
+    the second ETF, both in COP; `<name>_trend` is its trailing return for the trend filter.
     """
     bt = cfg["backtest"]
     start = pd.Period(bt["t0"], "M") - HISTORY
@@ -54,6 +58,8 @@ def make_panel(
         "cspx_price_cop": cspx,
         "icolcap_vol_ea": icolcap_vol,
         "cspx_vol_ea": cspx_vol,
+        "icolcap_trend_ret": icolcap_trend,
+        "cspx_trend_ret": cspx_trend,
         "fic_rate_ea": fic,  # `fic` is an annual rate (scalar) in these tests
         "fic_ret_m": (1 + fic) ** (1 / 12) - 1,
     }
