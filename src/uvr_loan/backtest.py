@@ -8,6 +8,9 @@ by the plan's strategy; live CDTs are held to maturity (S13). There can be sever
 entry of `data.etfs` in the config, priced with the panel column `<name>_price_cop`); when they
 must cover a payment, each one is sold in proportion to its value.
 
+Plan 4 (`trend_ldi`) is plan 3 with a trend filter: an ETF with a negative return over the last
+months gets no money at a review, and its share stays in the FIC.
+
 Run `python -m uvr_loan.backtest` to write the results of every plan to results/.
 """
 
@@ -191,7 +194,34 @@ def ldi_strategy(
     return Allocation(fic, etfs, _bought_lots(tau, row, buy_uvr, cfg), floor_cop=floor_uvr * uvr)
 
 
-PLANS = {"conservative": conservative_strategy, "cdt_ladder": cdt_ladder_strategy, "ldi": ldi_strategy}
+def trend_ldi_strategy(
+    tau: int,
+    history: pd.DataFrame,
+    free_cop: float,
+    lots: list[Lot],
+    payment_schedule: pd.DataFrame,
+    cfg: dict[str, Any],
+) -> Allocation:
+    """Plan 4: plan 3 with a trend filter on the ETFs.
+
+    Same floor, ladder and inverse-volatility split as `ldi_strategy`. An ETF whose return of the last
+    `data.trend_window_months` months (`<name>_trend_ret`, known at tau) is below
+    `trend_ldi.min_trailing_return` gets no money: its share stays in the FIC, it is not given to the
+    other ETFs. The filter is evaluated again at every review.
+    """
+    alloc = ldi_strategy(tau, history, free_cop, lots, payment_schedule, cfg)
+    row, minimum = history.iloc[-1], cfg["trend_ldi"]["min_trailing_return"]
+    kept = {name: cop for name, cop in alloc.etf_cop.items() if row[f"{name}_trend_ret"] >= minimum}
+    left_out = sum(alloc.etf_cop.values()) - sum(kept.values())
+    return alloc._replace(fic_cop=alloc.fic_cop + left_out, etf_cop=kept)
+
+
+PLANS = {
+    "conservative": conservative_strategy,
+    "cdt_ladder": cdt_ladder_strategy,
+    "ldi": ldi_strategy,
+    "trend_ldi": trend_ldi_strategy,
+}
 
 
 def total_funding_ratio(free_cop: float, live_cdt_cop: float, floor_cop: float) -> float:

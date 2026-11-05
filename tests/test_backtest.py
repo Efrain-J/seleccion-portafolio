@@ -386,3 +386,42 @@ def test_run_backtest_rejects_a_bad_panel(spoil, message):
     cfg = make_cfg()
     with pytest.raises(ValueError, match=message):
         run_backtest(spoil(make_panel(cfg)), make_schedule({}), cfg, "ldi")
+
+
+# Plan 4: plan 3 with a trend filter on the ETFs.
+
+
+def run_trend(cfg, payments, **panel):
+    return run_backtest(make_panel(cfg, **panel), make_schedule(payments), cfg, "trend_ldi").set_index("month")
+
+
+def test_trend_ldi_equals_ldi_when_every_trend_is_positive():
+    cfg = make_cfg()
+    pd.testing.assert_frame_equal(
+        run_trend(cfg, {7: 100.0}, icolcap_trend=0.1, cspx_trend=0.0), run_ldi(cfg, {7: 100.0})
+    )
+
+
+def test_trend_ldi_keeps_the_share_of_a_falling_etf_in_the_fic():
+    cfg = make_cfg()
+    ldi, trend = run_ldi(cfg, {7: 100.0}), run_trend(cfg, {7: 100.0}, icolcap_trend=-0.05)
+    assert trend.loc[0, "icolcap_cop"] == 0
+    assert trend.loc[0, "cspx_cop"] == pytest.approx(447.5)  # not given the share of ICOLCAP
+    assert trend.loc[0, "fic_cop"] == pytest.approx(ldi.loc[0, "fic_cop"] + 447.5)
+    assert trend.loc[0, "cdt_cop"] == pytest.approx(ldi.loc[0, "cdt_cop"])  # same ladder
+    assert trend.loc[0, "floor_cop"] == pytest.approx(ldi.loc[0, "floor_cop"])
+
+
+def test_trend_ldi_holds_no_etf_when_every_trend_is_negative():
+    cfg = make_cfg()
+    ldi, trend = run_ldi(cfg, {7: 100.0}), run_trend(cfg, {7: 100.0}, icolcap_trend=-0.05, cspx_trend=-0.3)
+    assert (trend["etf_cop"] == 0).all()
+    assert trend.loc[0, "fic_cop"] == pytest.approx(ldi.loc[0, "fic_cop"] + 895.0)
+
+
+def test_trend_ldi_buys_an_etf_again_when_its_trend_turns_positive():
+    cfg = make_cfg()
+    trend = [-0.1] * 6 + [0.1] * 7  # negative at the review of month 0, positive at month 6
+    results = run_trend(cfg, {}, icolcap_trend=trend)
+    assert results.loc[0, "icolcap_cop"] == 0
+    assert results.loc[6, "icolcap_cop"] > 0
