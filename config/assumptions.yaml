@@ -1,4 +1,4 @@
-# Problem parameters and modeling assumptions (S1–S19, see docs/reglas_de_inversion.md).
+# Problem parameters and modeling assumptions (S1–S19, see plan_proyecto_credito_uvr.md).
 # Naming: money ends in _cop or _uvr; rates are decimals ending in _ea (effective annual) or _m (monthly).
 
 initial_capital_cop: 760_000_000
