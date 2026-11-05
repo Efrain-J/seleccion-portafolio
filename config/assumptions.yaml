@@ -1,4 +1,4 @@
-# Problem parameters and modeling assumptions (S1–S19, see docs/reglas_de_inversion.md).
+# Problem parameters and modeling assumptions (S1–S19, see plan_proyecto_credito_uvr.md).
 # Naming: money ends in _cop or _uvr; rates are decimals ending in _ea (effective annual) or _m (monthly).
 
 initial_capital_cop: 760_000_000
@@ -48,7 +48,7 @@ data:
     max_daily_change: 0.05     # fund-days with a larger change (or a unit value <= 0) are logged and excluded
 
 cdt_ladder:                    # Plan 2: ladder of fixed-rate CDTs chosen with an LP in UVR
-  deflator_scenario: base      # inflation that turns nominal rates (CDT and FIC) into expected real ones
+  deflator_scenario: high      # inflation that turns nominal rates (CDT and FIC) into expected real ones
   term_columns:                # CDT term in months: panel column with its rate
     3: cdt_90d_ea
     6: cdt_180d_ea

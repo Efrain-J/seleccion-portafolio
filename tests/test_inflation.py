@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -40,3 +42,14 @@ def test_scenarios_use_the_trailing_base_and_config_shocks(cfg):
     assert result["base"] == pytest.approx(base)
     assert result["high"] == pytest.approx(base + s["high_shock_pp"] / 100)
     assert result["low"] == pytest.approx(base + s["low_shock_pp"] / 100)
+
+
+def test_plans_use_the_same_inflation_scenario(cfg):
+    """Warns (does not fail) if the plans decide with different inflation: their results would not be comparable."""
+    used = {
+        "conservative.fic_sizing_scenario": cfg["conservative"]["fic_sizing_scenario"],
+        "cdt_ladder.deflator_scenario": cfg["cdt_ladder"]["deflator_scenario"],
+        "ldi.floor_scenario": cfg["ldi"]["floor_scenario"],
+    }
+    if len(set(used.values())) > 1:
+        warnings.warn(f"The plans use different inflation scenarios, their results are not comparable: {used}")
