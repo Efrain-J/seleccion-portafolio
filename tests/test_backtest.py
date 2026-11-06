@@ -69,7 +69,7 @@ def test_conservative_plan_holds_no_etf():
 def test_etf_follows_its_price(monkeypatch):
     """The engine still supports an ETF (for future plans): a plan that puts everything in it."""
 
-    def all_in_etf(tau, history, free_cop, lots, payment_schedule, cfg):
+    def all_in_etf(tau, history, free_cop, lots, payment_schedule, cfg, state=None):
         return Allocation(0.0, {"icolcap": free_cop}, [])
 
     monkeypatch.setitem(PLANS, "all_in_etf", all_in_etf)
@@ -85,7 +85,7 @@ def test_etf_follows_its_price(monkeypatch):
 def run_split(monkeypatch, fic_share, payments, etf=100.0):
     """A plan that keeps `fic_share` of the free money in the FIC and the rest in the ETF."""
 
-    def split(tau, history, free_cop, lots, payment_schedule, cfg):
+    def split(tau, history, free_cop, lots, payment_schedule, cfg, state=None):
         return Allocation(fic_share * free_cop, {"icolcap": (1 - fic_share) * free_cop}, [])
 
     monkeypatch.setitem(PLANS, "split", split)
@@ -228,7 +228,7 @@ def test_ladder_without_a_feasible_plan_keeps_the_money_and_records_the_shortfal
 def test_strategies_only_see_data_up_to_the_review(monkeypatch):
     seen = []
 
-    def spy(tau, history, free, lots, payment_schedule, cfg):
+    def spy(tau, history, free, lots, payment_schedule, cfg, state=None):
         seen.append((tau, history.index[-1]))
         return Allocation(free, {}, [])
 
@@ -297,7 +297,7 @@ def test_a_crash_of_the_etfs_does_not_reach_the_payments():
 
 
 def test_etfs_are_sold_pro_rata(monkeypatch):
-    def two_etfs(tau, history, free_cop, lots, payment_schedule, cfg):
+    def two_etfs(tau, history, free_cop, lots, payment_schedule, cfg, state=None):
         return Allocation(0.0, {"icolcap": 0.6 * free_cop, "cspx": 0.4 * free_cop}, [])
 
     monkeypatch.setitem(PLANS, "two_etfs", two_etfs)
@@ -388,40 +388,121 @@ def test_run_backtest_rejects_a_bad_panel(spoil, message):
         run_backtest(spoil(make_panel(cfg)), make_schedule({}), cfg, "ldi")
 
 
-# Plan 4: plan 3 with a trend filter on the ETFs.
+# Plan 4: plan 3 with a ratchet (TIPP) on the real surplus S = A - F (UVR). It protects
+# K = max((1 + b) F, F + phi * peak S) and puts E = clip(m (A - K), 0, A - (1 + b) F) in the ETFs,
+# with m = 1 / max_fall. In these tests UVR = 1, so UVR and COP amounts are equal.
 
 
-def run_trend(cfg, payments, **panel):
-    return run_backtest(make_panel(cfg, **panel), make_schedule(payments), cfg, "trend_ldi").set_index("month")
+def ratchet_cfg(protected_share=0.80, max_fall=0.35, horizon=12):
+    cfg = make_cfg(horizon=horizon)
+    cfg["ratchet_ldi"] = {"protected_share": protected_share, "max_fall": max_fall}
+    return cfg
 
 
-def test_trend_ldi_equals_ldi_when_every_trend_is_positive():
-    cfg = make_cfg()
+def run_ratchet(cfg, payments, **panel):
+    horizon = cfg["backtest"]["horizon_months"]
+    return run_backtest(
+        make_panel(cfg, **panel), make_schedule(payments, horizon=horizon), cfg, "ratchet_ldi"
+    ).set_index("month")
+
+
+def test_ratchet_without_protection_and_with_m_1_is_plan_3():
+    """phi = 0 and max_fall = 1 give K = (1 + b) F and E = A - (1 + b) F: exactly plan 3."""
+    cfg = ratchet_cfg(protected_share=0.0, max_fall=1.0)
+    etf = [100.0, 110.0, 90.0, 120.0, 80.0, 100.0, 70.0, 95.0, 105.0, 60.0, 100.0, 115.0, 90.0]
     pd.testing.assert_frame_equal(
-        run_trend(cfg, {7: 100.0}, icolcap_trend=0.1, cspx_trend=0.0), run_ldi(cfg, {7: 100.0})
+        run_ratchet(cfg, {7: 100.0, 12: 300.0}, etf=etf), run_ldi(cfg, {7: 100.0, 12: 300.0}, etf=etf)
     )
 
 
-def test_trend_ldi_keeps_the_share_of_a_falling_etf_in_the_fic():
-    cfg = make_cfg()
-    ldi, trend = run_ldi(cfg, {7: 100.0}), run_trend(cfg, {7: 100.0}, icolcap_trend=-0.05)
-    assert trend.loc[0, "icolcap_cop"] == 0
-    assert trend.loc[0, "cspx_cop"] == pytest.approx(447.5)  # not given the share of ICOLCAP
-    assert trend.loc[0, "fic_cop"] == pytest.approx(ldi.loc[0, "fic_cop"] + 447.5)
-    assert trend.loc[0, "cdt_cop"] == pytest.approx(ldi.loc[0, "cdt_cop"])  # same ladder
-    assert trend.loc[0, "floor_cop"] == pytest.approx(ldi.loc[0, "floor_cop"])
+def test_ratchet_at_t0_invests_m_times_the_unprotected_surplus():
+    """Floor 100, A = 1000: S = 900 = peak, K = 100 + 0.8 * 900 = 820, E = (1000 - 820) / 0.35."""
+    cfg = ratchet_cfg()
+    results = run_ratchet(cfg, {7: 100.0})
+    etf = (1000.0 - 820.0) / 0.35
+    assert results.loc[0, "floor_cop"] == pytest.approx(100.0)
+    assert results.loc[0, "etf_cop"] == pytest.approx(etf)
+    assert results.loc[0, "icolcap_cop"] == pytest.approx(etf / 2)  # same volatility: half each
+    assert results.loc[0, "fic_cop"] + results.loc[0, "cdt_cop"] == pytest.approx(1000.0 - etf)
 
 
-def test_trend_ldi_holds_no_etf_when_every_trend_is_negative():
-    cfg = make_cfg()
-    ldi, trend = run_ldi(cfg, {7: 100.0}), run_trend(cfg, {7: 100.0}, icolcap_trend=-0.05, cspx_trend=-0.3)
-    assert (trend["etf_cop"] == 0).all()
-    assert trend.loc[0, "fic_cop"] == pytest.approx(ldi.loc[0, "fic_cop"] + 895.0)
+def test_ratchet_never_holds_more_etf_than_the_surplus_above_the_buffer():
+    """A small protected share and a large m would ask for more than A - (1 + b) F: it is capped."""
+    cfg = ratchet_cfg(protected_share=0.10, max_fall=0.05)
+    results = run_ratchet(cfg, {7: 100.0})
+    assert results.loc[0, "etf_cop"] == pytest.approx(1000.0 - 105.0)
 
 
-def test_trend_ldi_buys_an_etf_again_when_its_trend_turns_positive():
-    cfg = make_cfg()
-    trend = [-0.1] * 6 + [0.1] * 7  # negative at the review of month 0, positive at month 6
-    results = run_trend(cfg, {}, icolcap_trend=trend)
-    assert results.loc[0, "icolcap_cop"] == 0
-    assert results.loc[6, "icolcap_cop"] > 0
+def test_ratchet_holds_no_etf_when_the_money_does_not_cover_the_buffer():
+    cfg = ratchet_cfg()
+    ratchet, ldi = run_ratchet(cfg, {7: 990.0}), run_ldi(cfg, {7: 990.0})
+    assert (ratchet["etf_cop"] == 0).all()
+    assert (ldi["etf_cop"] == 0).all()
+
+
+def test_ratchet_cuts_the_etfs_after_a_fall_from_the_peak():
+    """Rise to 150 at the review of month 6 (new peak), fall to 90 at month 12: the cushion above K
+    shrinks m times faster than the surplus, so plan 4 ends with a smaller ETF share than plan 3."""
+    cfg = ratchet_cfg(horizon=18)
+    etf = [100.0] * 6 + [150.0] * 6 + [90.0] * 7
+    payments = {13: 50.0, 18: 50.0}
+    ratchet = run_ratchet(cfg, payments, etf=etf, cspx=etf)
+    ldi = run_ldi_long(cfg, payments, etf=etf, cspx=etf)
+    share = ratchet["etf_cop"] / ratchet["wealth_cop"]
+    assert share.loc[12] < share.loc[6]
+    assert share.loc[12] < (ldi["etf_cop"] / ldi["wealth_cop"]).loc[12]
+
+
+def run_ldi_long(cfg, payments, **panel):
+    horizon = cfg["backtest"]["horizon_months"]
+    return run_backtest(
+        make_panel(cfg, **panel), make_schedule(payments, horizon=horizon), cfg, "ldi"
+    ).set_index("month")
+
+
+def ratchet_at_t0(cfg, free_cop, state):
+    panel = make_panel(cfg)
+    history = panel.loc[: pd.Period(cfg["backtest"]["t0"], "M")]
+    return backtest.ratchet_ldi_strategy(0, history, free_cop, [], make_schedule({7: 100.0}), cfg, state)
+
+
+def test_ratchet_keeps_the_highest_surplus_in_the_state():
+    cfg = ratchet_cfg()
+    state = {}
+    ratchet_at_t0(cfg, 1000.0, state)
+    assert state["peak_surplus_uvr"] == pytest.approx(900.0)
+    ratchet_at_t0(cfg, 600.0, state)  # a lower surplus does not lower the peak
+    assert state["peak_surplus_uvr"] == pytest.approx(900.0)
+    ratchet_at_t0(cfg, 1500.0, state)
+    assert state["peak_surplus_uvr"] == pytest.approx(1400.0)
+
+
+def test_ratchet_with_an_earlier_peak_protects_more():
+    """Same money, but a peak surplus of 2000 from an earlier review: K = 100 + 0.8 * 2000 = 1700 > A,
+    so nothing goes to the ETFs; without that history E = (1000 - 820) / 0.35."""
+    cfg = ratchet_cfg()
+    fresh = ratchet_at_t0(cfg, 1000.0, {})
+    remembered = ratchet_at_t0(cfg, 1000.0, {"peak_surplus_uvr": 2000.0})
+    assert sum(fresh.etf_cop.values()) == pytest.approx(180.0 / 0.35)
+    assert sum(remembered.etf_cop.values()) == 0.0
+    spent = remembered.fic_cop + sum(lot["principal_cop"] for lot in remembered.lots)
+    assert spent == pytest.approx(1000.0)  # the money taken from the ETFs goes to the ladder
+
+
+def test_ratchet_rejects_a_max_fall_that_is_not_positive():
+    with pytest.raises(ValueError, match="max_fall"):
+        ratchet_at_t0(ratchet_cfg(max_fall=0.0), 1000.0, {})
+
+
+def test_ratchet_surplus_counts_the_live_cdts_at_their_value():
+    """A live CDT worth 500 that pays in month 6 covers the payment of month 7, so the floor of the free
+    money is 0. The surplus is still assets - liabilities of the whole portfolio: 1000 + 500 - 100,
+    not 1000 - 0; otherwise CDTs bought with surplus money would look like a fall at the next review."""
+    cfg = ratchet_cfg()
+    panel = make_panel(cfg)
+    history = panel.loc[: pd.Period(cfg["backtest"]["t0"], "M")]
+    live = [{"principal_cop": 500.0, "rate_ea": 0.0, "buy_month": 0, "maturity_month": 6}]
+    state = {}
+    alloc = backtest.ratchet_ldi_strategy(0, history, 1000.0, live, make_schedule({7: 100.0}), cfg, state)
+    assert alloc.floor_cop == pytest.approx(0.0)
+    assert state["peak_surplus_uvr"] == pytest.approx(1400.0)

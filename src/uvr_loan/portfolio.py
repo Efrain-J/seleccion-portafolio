@@ -14,6 +14,7 @@ gets (1 + buffer) x floor and the rest goes to ETFs split by inverse volatility.
 
 import math
 from collections.abc import Sequence
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -55,37 +56,84 @@ def _solve(objective, a_eq, b_eq, tau, a_ub=None, b_ub=None):
 
 def _ladder_constraints(
     tau: int,
+    horizon: int,
+    k: int,
     maturities_uvr: dict[int, float],
-    payment_schedule: pd.DataFrame,
-    cfg: dict[str, Any],
+    payments: np.ndarray,
     cdt_real_ea: dict[int, float],
     fic_real_ea: float,
 ) -> tuple[list[tuple[int, int]], np.ndarray, np.ndarray]:
     """Month balances of the ladder LP: (lots, a_eq, b_eq), with columns [y lots..., c[tau..H]].
 
-    Row 0 is the review month: c[tau] + y[tau, :] = budget; its right-hand side is left at 0
-    for the caller to fill. Rows m > tau: c[m] = c[m-1] * (1 + fic_real_ea)^(1/12) + matured CDTs
-    + maturities_uvr[m] - y[m, :] - payment[m] (S12: maturities pay the same month).
+    `payments` is the payment in UVR of each month 0..H (`payments_by_month`). Row 0 is the review
+    month: c[tau] + y[tau, :] = budget; its right-hand side is left at 0 for the caller to fill.
+    Rows m > tau: c[m] = c[m-1] * (1 + fic_real_ea)^(1/12) + matured CDTs + maturities_uvr[m]
+    - y[m, :] - payment[m] (S12: maturities pay the same month).
     """
-    horizon, k = cfg["backtest"]["horizon_months"], cfg["backtest"]["review_every_months"]
-    payments = payment_schedule.set_index("month")["total_payment_uvr"]
-
     lots = [(s, j) for s in range(tau, horizon + 1, k) for j in cdt_real_ea if s + j <= horizon]
-    months = range(tau, horizon + 1)
-    n_lots = len(lots)
-    a_eq = np.zeros((len(months), n_lots + len(months)))
-    b_eq = np.zeros(len(months))
-    for row, m in enumerate(months):
-        a_eq[row, n_lots + row] = 1.0  # c[m]
-        if m > tau:
-            a_eq[row, n_lots + row - 1] = -((1 + fic_real_ea) ** (1 / 12))  # c[m-1]
-            b_eq[row] = maturities_uvr.get(m, 0.0) - payments.get(m, 0.0)
-        for col, (s, j) in enumerate(lots):
-            if s == m:
-                a_eq[row, col] += 1.0
-            if s + j == m:
-                a_eq[row, col] -= (1 + cdt_real_ea[j]) ** (j / 12)
+    n_lots, n_months = len(lots), horizon + 1 - tau
+    a_eq = np.zeros((n_months, n_lots + n_months))
+    b_eq = np.zeros(n_months)
+
+    rows = np.arange(n_months)
+    a_eq[rows, n_lots + rows] = 1.0  # c[m]
+    a_eq[rows[1:], n_lots + rows[:-1]] = -((1 + fic_real_ea) ** (1 / 12))  # c[m-1]
+    maturities = np.zeros(horizon + 1)
+    for m, amount in maturities_uvr.items():
+        if tau < m <= horizon:
+            maturities[m] = amount
+    b_eq[1:] = maturities[tau + 1 :] - payments[tau + 1 :]
+
+    if lots:  # a lot is bought in the row of month s and pays in the row of month s + j
+        cols = np.arange(n_lots)
+        bought = np.array([s for s, _ in lots]) - tau
+        terms = np.array([j for _, j in lots])
+        a_eq[bought, cols] += 1.0
+        a_eq[bought + terms, cols] -= np.array([(1 + cdt_real_ea[j]) ** (j / 12) for _, j in lots])
     return lots, a_eq, b_eq
+
+
+def payments_by_month(payment_schedule: pd.DataFrame, horizon: int) -> np.ndarray:
+    """Payment in UVR of each month 0..horizon (0 for months without one)."""
+    payments = np.zeros(horizon + 1)
+    months = payment_schedule["month"].to_numpy()
+    inside = (months >= 0) & (months <= horizon)
+    payments[months[inside]] = payment_schedule["total_payment_uvr"].to_numpy()[inside]
+    return payments
+
+
+# The ladder LPs are cached: in plans 3 and 4 the ladder budget is usually 1.05 x the floor, so the
+# same LPs repeat in every ETF path of the synthetic scenarios. The cached functions take hashable
+# copies of the inputs (`_lp_key`) and return the same floats a new solve would.
+_LP_CACHE_SIZE = 4096
+
+
+def _lp_key(
+    tau: int,
+    maturities_uvr: dict[int, float],
+    payment_schedule: pd.DataFrame,
+    cfg: dict[str, Any],
+    cdt_real_ea: dict[int, float],
+    fic_real_ea: float,
+) -> tuple:
+    horizon, k = cfg["backtest"]["horizon_months"], cfg["backtest"]["review_every_months"]
+    payments = tuple(payments_by_month(payment_schedule, horizon).tolist())
+    # The order of the CDT terms sets the order of the LP columns, so it is kept, not sorted.
+    return (
+        tau,
+        horizon,
+        k,
+        tuple(sorted(maturities_uvr.items())),
+        payments,
+        tuple(cdt_real_ea.items()),
+        float(fic_real_ea),
+    )
+
+
+def clear_ladder_cache() -> None:
+    """Forget the cached ladder LPs (for tests that replace the solver)."""
+    _cached_floor.cache_clear()
+    _cached_purchases.cache_clear()
 
 
 def ladder_floor(
@@ -101,7 +149,14 @@ def ladder_floor(
     Same constraints as `ladder_purchases`, with the budget B as one more variable
     (c[tau] + y[tau, :] - B = 0) and the objective min B.
     """
-    _, a_eq, b_eq = _ladder_constraints(tau, maturities_uvr, payment_schedule, cfg, cdt_real_ea, fic_real_ea)
+    return _cached_floor(*_lp_key(tau, maturities_uvr, payment_schedule, cfg, cdt_real_ea, fic_real_ea))
+
+
+@lru_cache(maxsize=_LP_CACHE_SIZE)
+def _cached_floor(tau, horizon, k, maturities, payments, cdt, fic_real_ea) -> float:
+    _, a_eq, b_eq = _ladder_constraints(
+        tau, horizon, k, dict(maturities), np.array(payments), dict(cdt), fic_real_ea
+    )
     budget = np.zeros((len(b_eq), 1))
     budget[0, 0] = -1.0
     objective = np.zeros(a_eq.shape[1] + 1)
@@ -146,8 +201,17 @@ def ladder_purchases(
     cash c[m] at the close of each month m = tau .. H (constraints in `_ladder_constraints`).
     The objective maximizes c[H]; ties are broken toward the shortest terms (second stage).
     """
+    key = _lp_key(tau, maturities_uvr, payment_schedule, cfg, cdt_real_ea, fic_real_ea)
+    return dict(_cached_purchases(float(budget_uvr), *key))
+
+
+@lru_cache(maxsize=_LP_CACHE_SIZE)
+def _cached_purchases(
+    budget_uvr, tau, horizon, k, maturities, payments, cdt, fic_real_ea
+) -> tuple[tuple[int, float], ...]:
+    cdt_real_ea = dict(cdt)
     lots, a_eq, b_eq = _ladder_constraints(
-        tau, maturities_uvr, payment_schedule, cfg, cdt_real_ea, fic_real_ea
+        tau, horizon, k, dict(maturities), np.array(payments), cdt_real_ea, fic_real_ea
     )
     n_lots = len(lots)
     b_eq[0] = budget_uvr
@@ -172,7 +236,7 @@ def ladder_purchases(
     for col, (s, j) in enumerate(lots):
         if s == tau:
             buy[j] = float(result.x[col])
-    return buy
+    return tuple(buy.items())
 
 
 def main() -> None:

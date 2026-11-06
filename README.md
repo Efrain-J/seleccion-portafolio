@@ -108,8 +108,9 @@ program in UVR that covers every remaining payment and maximizes the final wealt
 returns (deflated with the high inflation scenario, like plans 1 and 3), and the results use the observed CDT rates. Plan 3 (LDI) computes a floor, the smallest budget of that same
 LP that covers every remaining payment under high inflation, gives the CDT ladder 1.05 × floor and puts the rest in
 ICOLCAP and CSPX, split by inverse volatility (CPPI with multiplier 1: a fall of the ETFs never reaches the money for
-the payments). Plan 4 (`trend_ldi`) is plan 3 with a trend filter: an ETF whose return over the last
-`data.trend_window_months` (12) months is negative at a review gets no money, and its share stays in the FIC.
+the payments). Plan 4 (`ratchet_ldi`) is plan 3 with a ratchet (TIPP): it protects `protected_share` (80 %) of
+the highest real surplus reached at a review (assets − cost of covering every remaining payment, in UVR), puts
+(assets − protected level) / `max_fall` in the ETFs (never more than plan 3), and buys more CDTs with the rest.
 Every reported peso comes from observed data. The base inflation of the
 scenarios is the UVR inflation of the last `base_lookback_months` months known at each review. The full rules, with
 notation, examples and simplifications, are in [`docs/reglas_de_inversion.md`](docs/reglas_de_inversion.md).
@@ -132,10 +133,15 @@ FIC + ETF: a payment is
 taken from the FIC first and then from ETF units sold at that month's price; only what both cannot cover is recorded
 as shortfall. CDTs are never redeemed early.
 
-Run the synthetic ETF scenarios (plans 2, 3 and 4 when the ETF prices follow made-up paths from t0: both down,
-flat but volatile, one up and one down, a 40 % crash with recovery, and a sine; see `synthetic_etfs` in the config).
-It writes `results/synthetic/summary.csv`, `results/synthetic/prices.csv` and one
-`results/synthetic/<scenario>/<plan>.csv` per run; `notebooks/synthetic_etf_scenarios.ipynb` plots them:
+Run the synthetic ETF scenarios (plans 2, 3 and 4 when the ETF prices follow made-up paths from t0, with UVR, CDT
+rates, FIC and payments kept historical; see `synthetic_etfs` in the config). There are 8 scenarios: both down, flat
+but volatile, one up and one down, a 40 % crash with recovery, a sine, and three where the ETFs rise on average.
+Each one has `n_paths` (2,000) random paths from one `seed`, so the same seed gives the same results; plans 3 and 4
+run on every path in parallel (about a minute). It writes `results/synthetic/summary.csv` (per scenario and plan:
+mean and percentiles of the final net wealth, drawdown, share of paths with a shortfall, share of paths that beat
+plan 3), `results/synthetic/fan.csv` (monthly percentiles of the net wealth), and for the example path 0
+`results/synthetic/prices.csv` and `results/synthetic/<scenario>/<plan>.csv`;
+`notebooks/synthetic_etf_scenarios.ipynb` plots them:
 
 ```
 uv run python -m uvr_loan.synthetic

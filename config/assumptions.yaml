@@ -33,7 +33,6 @@ data:
   end: "2026-11-30"
   etf_history_start: "2013-01-01"  # ETFs are downloaded from here: their volatility needs years before t0
   vol_window_months: 36        # months of returns behind <name>_vol_ea (only months up to each one)
-  trend_window_months: 12      # months behind <name>_trend_ret, the ETF return used by the trend filter of plan 4
   etfs:                        # Yahoo Finance, adjusted close; panel column <name>_price_cop (USD converted with the TRM)
     icolcap: {ticker: ICOLCAP.CL, currency: COP}   # iShares MSCI COLCAP (BVC)
     cspx: {ticker: CSPX.L, currency: USD}          # iShares Core S&P 500 UCITS, Irish, accumulating (LSE, USD line)
@@ -60,11 +59,14 @@ ldi:                           # Plan 3: CDT ladder up to the floor (x 1.05), ET
   floor_buffer: 0.05           # the ladder gets (1 + buffer) x floor; the rest of the free money goes to the ETFs
   growth_assets: [icolcap, cspx]   # names in data.etfs; split by inverse volatility (data.vol_window_months)
 
-trend_ldi:                     # Plan 4: plan 3 with a trend filter on the ETFs (same floor, ladder and ETFs: ldi.*)
-  min_trailing_return: 0.0     # an ETF whose return of the last data.trend_window_months months is below this gets no money; its share stays in the FIC
+ratchet_ldi:                   # Plan 4: plan 3 with a ratchet (TIPP) on the real surplus S = assets - liabilities, in UVR (same floor, ladder and ETFs: ldi.*)
+  protected_share: 0.80        # phi: share of the highest surplus of the run that is protected, Z = liabilities + phi * peak S
+  max_fall: 0.25               # delta: ETF fall between two reviews that takes the assets down to Z at most: ETFs = (assets - Z) / delta, capped at plan 3's ETFs.
+                               # Worst 6-month falls in COP since 2013: ICOLCAP -30.5 % (to 2020-05), CSPX -17.4 % (to 2022-06)
 
 synthetic_etfs:                # Made-up ETF paths from t0 (python -m uvr_loan.synthetic); rates, UVR, FIC and payments stay historical
-  seed: 42                     # the same noise draws in every scenario; each ETF has its own
+  seed: 42                     # the same seed gives the same paths; path j has the same draws in every scenario, each ETF its own
+  n_paths: 2000                # random paths per scenario (plans 3 and 4 run on each; plan 2 holds no ETF and runs once)
   sigma_ea: 0.15               # default annual volatility of the Brownian noise; a scenario can override it per ETF
   scenarios:                   # per ETF: drift_ea (annual log drift), and optionally sigma_ea, amplitude + period_months (sine), crash_month + crash_fall
     both_down:
@@ -82,3 +84,12 @@ synthetic_etfs:                # Made-up ETF paths from t0 (python -m uvr_loan.s
     sine:                      # log price +- 0.25 around the start, one cycle every 4 years
       icolcap: {drift_ea: 0.0, sigma_ea: 0.10, amplitude: 0.25, period_months: 48}
       cspx: {drift_ea: 0.0, sigma_ea: 0.10, amplitude: 0.25, period_months: 48}
+    steady_up:                 # the ETFs beat the CDTs on average (positive premium)
+      icolcap: {drift_ea: 0.10, sigma_ea: 0.18}
+      cspx: {drift_ea: 0.10, sigma_ea: 0.18}
+    steady_up_noisy:
+      icolcap: {drift_ea: 0.08, sigma_ea: 0.25}
+      cspx: {drift_ea: 0.08, sigma_ea: 0.25}
+    dip_then_up:               # 20 % fall in month 37, then the same rising drift
+      icolcap: {drift_ea: 0.10, crash_month: 37, crash_fall: 0.20}
+      cspx: {drift_ea: 0.10, crash_month: 37, crash_fall: 0.20}
