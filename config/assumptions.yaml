@@ -19,7 +19,10 @@ backtest:
   review_sensitivity_months: [3, 6, 12]
 
 inflation_scenarios:
+  source: trailing             # trailing: base = trailing UVR inflation; forecast: base from the forecast file
   base_lookback_months: 6      # S14: base = annualized UVR inflation of the last 6 months (placeholder model)
+  forecast_file: data/forecasts/hw_inflation_forecasts.csv   # one row per decision month, made with information up to its close
+  forecast_stat: median_ea     # column of the file used as base: median_ea or p995_ea
   high_shock_pp: 3.0           # high = base + 3 pp
   low_shock_pp: -1.5           # low = base - 1.5 pp
 

@@ -128,6 +128,22 @@ in nov-2019 with no recovery); it writes `results/stress_summary.csv`:
 .venv\Scripts\python -m uvr_loan.stress
 ```
 
+Run every plan with the inflation forecast of the hull_white project instead of the trailing UVR inflation
+(`inflation_scenarios.source: forecast`):
+
+```
+.venv\Scripts\python -m uvr_loan.forecast_runs
+```
+
+`data/forecasts/hw_inflation_forecasts.csv` has, for the close of each month, the median (`median_ea`) and the 99.5th
+percentile (`p995_ea`) of the 6-month inflation forecast (effective annual, decimal), made only with information up to
+that close. The base inflation of the scenarios is replaced by one of them (`forecast_stat`); high and low still add
++3 pp and -1.5 pp. The runner starts in May 2016 (the panel is complete from then on) and runs three cases: `trailing`
+(baseline), `median` and `p995`. It writes `results/forecast_runs/<case>/` (`backtest_<plan>.csv`, `summary.csv`,
+`base_inflation.csv`: the base used at each review next to the realized UVR inflation of the next 6 months) and
+`results/forecast_runs/comparison.csv` (one row per plan and case). The forecast is used as a constant annual
+inflation for the whole remaining horizon, like the trailing base; the p99.5 case is a stress test.
+
 The notebook `notebooks/backtest_plans.ipynb` plots the wealth and the FIC liquidity of every plan and the real versus
 projected UVR.
 
