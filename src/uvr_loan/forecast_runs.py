@@ -10,6 +10,7 @@ Run `python -m uvr_loan.forecast_runs` to write the results to results/forecast_
 """
 
 import copy
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -22,7 +23,13 @@ from uvr_loan.config import RESULTS_DIR, load_assumptions
 from uvr_loan.inflation import scenarios
 
 T0 = "2016-05"
-OUT_DIR = RESULTS_DIR / "forecast_runs"
+
+
+def output_dir(decision_scenario: str | None = None) -> Path:
+    """Folder of a run: results/forecast_runs (plans decide with the config scenario) or `..._<scenario>`."""
+    suffix = f"_{decision_scenario}" if decision_scenario else ""
+    return RESULTS_DIR / f"forecast_runs{suffix}"
+
 
 # Overrides of `inflation_scenarios` for each case.
 CASES: dict[str, dict[str, str]] = {
@@ -125,8 +132,7 @@ if __name__ == "__main__":
 
     # Optional argument: scenario every plan decides with (base, high, low); default = the config (high).
     decision = sys.argv[1] if len(sys.argv) > 1 else None
-    if decision is not None:
-        OUT_DIR = OUT_DIR.with_name(f"{OUT_DIR.name}_{decision}")
+    OUT_DIR = output_dir(decision)
 
     cfg = load_assumptions()
     panel = load_monthly_panel(case_cfg(cfg, "trailing", T0))

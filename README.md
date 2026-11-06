@@ -145,7 +145,10 @@ that close. The base inflation of the scenarios is replaced by one of them (`for
 inflation for the whole remaining horizon, like the trailing base; the p99.5 case is a stress test.
 
 The notebook `notebooks/backtest_plans.ipynb` plots the wealth and the FIC liquidity of every plan and the real versus
-projected UVR.
+projected UVR. To plot a run of `forecast_runs` instead of `results/`, set `UVR_CASE` (`trailing`, `median`, `p995`)
+and optionally `UVR_DECISION` (`base`, `high`, `low`) before running it, e.g.
+`UVR_CASE=p995 UVR_DECISION=base jupyter nbconvert --to notebook --execute notebooks/backtest_plans.ipynb --output backtest_plans_base_p995.ipynb`
+(`notebooks/backtest_plans_base_p995.ipynb` is that executed notebook; the stress test is not recomputed for these runs).
 
 ## Architecture
 

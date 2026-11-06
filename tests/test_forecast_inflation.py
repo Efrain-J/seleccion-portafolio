@@ -5,8 +5,14 @@ import pandas as pd
 import pytest
 from helpers import make_cfg, make_panel, make_schedule
 
-from uvr_loan.forecast_runs import CASES, base_inflation_log, case_cfg, pad_uvr_history, run_cases
+from uvr_loan.config import RESULTS_DIR
+from uvr_loan.forecast_runs import CASES, base_inflation_log, case_cfg, output_dir, pad_uvr_history, run_cases
 from uvr_loan.inflation import forecast_base, scenarios
+
+
+def test_output_dir_depends_on_the_decision_scenario():
+    assert output_dir(None) == RESULTS_DIR / "forecast_runs"
+    assert output_dir("base") == RESULTS_DIR / "forecast_runs_base"
 
 
 @pytest.fixture
