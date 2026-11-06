@@ -1,8 +1,9 @@
 # Reglas de inversión
 
 Cómo se decide dónde y cuánto invertir en cada plan: el **plan 1 (conservador)**, el **plan 2 (escalera de CDT
-optimizada)**, el **plan 3 (LDI: piso en CDT y crecimiento en ETF)** y el **plan 4 (plan 3 con filtro de
-tendencia)**. Al final, una prueba de estrés repite el backtest con ETF que pierden dinero.
+optimizada)**, el **plan 3 (LDI: piso en CDT y crecimiento en ETF)** y el **plan 4 (plan 3 con trinquete
+TIPP)**. Los escenarios sintéticos de los ETF (`python -m uvr_loan.synthetic`) repiten el backtest de los planes 2, 3 y
+4 con precios de ETF simulados.
 
 **Criterio de los resultados.** Las decisiones pueden usar estimaciones (por ejemplo, la inflación esperada), siempre
 con datos conocidos en la fecha de la revisión. El dinero reportado sale solo de rendimientos observados de
@@ -567,34 +568,86 @@ abr-2026.
 - **Sin cobertura cambiaria (S19)**, venta inmediata (S16) y conversión a la TRM (S17).
 - Además aplican los supuestos comunes.
 
-## Plan 4 – LDI con filtro de tendencia
+## Plan 4 – LDI con trinquete (TIPP)
 
-Es el [plan 3](#plan-3--ldi-piso-en-cdt-y-crecimiento-en-etf) con un solo cambio, en la parte de crecimiento: un ETF
-que viene perdiendo no recibe dinero, y su parte queda en el FIC. Todo lo que no se describe aquí es igual al plan 3.
+Es el [plan 3](#plan-3--ldi-piso-en-cdt-y-crecimiento-en-etf) con un solo cambio: cuánto dinero va a los ETF. El plan 3
+pone en ETF todo lo que sobra sobre el piso y nunca vende después de una caída. El plan 4 protege una parte de la
+mejor posición alcanzada hasta ahora (un **trinquete**, en inglés *ratchet*): después de una ganancia guarda una parte
+en CDT, y después de una caída reduce los ETF más rápido que la caída. Es la regla TIPP (*time-invariant portfolio
+protection*, Estep y Kritzman, 1988), una variante de CPPI con multiplicador mayor que 1. Todo lo que no se describe
+aquí es igual al plan 3.
 
 ### Instrumentos
 
-Los mismos del plan 3.
+Los mismos del plan 3. El dinero que el trinquete saca de los ETF compra más CDT (no queda en el FIC).
 
 ### Notación del plan 4
 
-Además de la del plan 3:
+Además de la del plan 3, todo en UVR en la revisión $\tau$:
 
 | Símbolo | Significado | Unidad | En el código |
 |---|---|---|---|
-| $g_i(\tau)$ | Rendimiento del ETF $i$ en los últimos 12 meses, en COP, conocido en $\tau$: $P_i(\tau) / P_i(\tau - 12) - 1$, con $P_i$ el precio del ETF | decimal | columnas `<nombre>_trend_ret`, YAML `data.trend_window_months` |
-| $\underline g$ | Rendimiento mínimo para recibir dinero (0) | decimal | YAML `trend_ldi.min_trailing_return` |
+| $A_\tau$ | Dinero libre: $W_\tau / \text{UVR}_\tau$ | UVR | – |
+| $V_\tau$ | Valor de los CDT vivos (comprados antes, sin vencer) | UVR | – |
+| $L_\tau$ | **Pasivo**: costo de cubrir todos los pagos que faltan desde cero (el piso sin contar los CDT vivos) | UVR | `ladder_floor` sin vencimientos |
+| $S_\tau$ | **Excedente real**: $A_\tau + V_\tau - L_\tau$ | UVR | – |
+| $S^{\max}_\tau$ | El mayor excedente de las revisiones hasta $\tau$ (incluida) | UVR | `state["peak_surplus_uvr"]` |
+| $\varphi$ | Parte protegida del mayor excedente (0,80) | decimal | YAML `ratchet_ldi.protected_share` |
+| $d$ | Caída de los ETF entre dos revisiones que la regla absorbe (0,25) | decimal | YAML `ratchet_ldi.max_fall` |
+| $m$ | Multiplicador: $m = 1/d = 4$ | – | – |
+| $E_\tau$ | Dinero para los ETF | UVR | – |
+
+**Por qué el excedente es $A + V - L$ y no $W - \Pi$:** los pagos del crédito bajan los activos y el pasivo en la misma
+cantidad, así que $S$ no cambia por pagar cuotas: solo cambia con los mercados. Medido en UVR, tampoco cambia con la
+inflación. Los CDT vivos se cuentan por su valor: si se usara solo el dinero libre menos el piso, los CDT comprados
+con excedente en una revisión desaparecerían del excedente en la siguiente (cubren pagos, pero lo que valen por encima
+de esos pagos no se contaría), y la regla vería una caída que no ocurrió. Tampoco se usa el indicador $\Phi_\tau$: sube
+solo a medida que se pagan las cuotas (llega a 25,7), así que un trinquete sobre él protegería cada vez más sin una
+razón de mercado.
 
 ### En cada revisión $\tau$
 
-**Pasos 1 y 2:** iguales al plan 3 (piso y escalera).
+**Paso 1:** igual al plan 3 (piso $\Pi_\tau$ del dinero libre). Además se calcula el pasivo $L_\tau$ con el mismo LP
+pero sin CDT vivos.
 
-**Paso 3 (cambia):** $G_\tau$ y los pesos $w_i$ se calculan como en el plan 3. El ETF $i$ recibe $w_i\,G_\tau$ solo si
-$g_i(\tau) \ge \underline g$; si no, esa parte queda en el FIC. No se le pasa al otro ETF, para que un ETF que pierde no
-aumente la exposición al otro. Si los dos fallan, todo $G_\tau$ queda en el FIC. En la siguiente revisión se vuelve a
-evaluar: un ETF vuelve cuando su $g_i$ es otra vez $\ge \underline g$.
+**Paso 2: el trinquete.**
 
-Código: `trend_ldi_strategy` en `src/uvr_loan/backtest.py`.
+$$
+S_\tau = A_\tau + V_\tau - L_\tau, \qquad S^{\max}_\tau = \max\bigl(S^{\max}_{\tau - k},\ S_\tau\bigr)
+$$
+
+$$
+P_\tau = L_\tau + \varphi\,\max\bigl(S^{\max}_\tau, 0\bigr) \qquad \text{(nivel protegido de todo el portafolio)}
+$$
+
+$$
+E_\tau = \min\Bigl(\max\bigl(m\,(A_\tau + V_\tau - P_\tau),\ 0\bigr),\ \max\bigl(A_\tau - (1 + b)\,B^{\min}_\tau,\ 0\bigr)\Bigr)
+$$
+
+Si los ETF caen $d$ = 25 % antes de la siguiente revisión, los activos bajan $d\,E_\tau = A_\tau + V_\tau - P_\tau$: justo
+hasta el nivel protegido. El tope es el dinero de ETF del plan 3, así que la escalera siempre recibe al menos
+$(1 + b)$ × piso y los pagos quedan cubiertos igual que en el plan 3.
+
+**Paso 3: comprar.** La escalera recibe $A_\tau - E_\tau$ (más que en el plan 3 cuando el trinquete actúa) y el LP del
+plan 2 decide los CDT; $E_\tau$ se reparte entre los ETF por volatilidad inversa, como en el plan 3.
+
+**Cuánto queda en ETF:**
+
+- En un máximo ($S_\tau = S^{\max}_\tau$) los ETF reciben $m\,(1 - \varphi)\,S_\tau = 0{,}80\,S_\tau$, menos que el
+  plan 3 aunque no haya habido caídas. Con dos parámetros independientes esto es así por construcción: para que en un
+  máximo el plan 4 tuviera lo mismo que el plan 3 haría falta $\varphi = 1 - d$.
+- Después de una caída del excedente de $x$ desde el máximo, los ETF bajan $m\,x$: con $x \ge (1 - \varphi)\,S^{\max}$
+  (20 % del máximo) no queda nada en ETF.
+- Con $\varphi = 0$ y $d = 1$ el plan 4 es exactamente el plan 3 (un test lo comprueba).
+
+$d$ = 25 % se comparó con los datos desde 2013. La peor caída de 6 meses en COP fue −30,5 % para ICOLCAP (hasta
+may-2020; −33,4 % del máximo al mínimo) y −17,4 % para CSPX (hasta jun-2022). La de la mezcla de los dos ETF con los
+pesos de volatilidad inversa, que es lo que la regla tiene, fue −13,7 % (hasta may-2020): en la caída de 2020 el peso
+se devaluó y CSPX en COP subió mientras ICOLCAP caía. Así que 25 % está por encima de la peor caída histórica de la
+mezcla, aunque no de la de ICOLCAP solo.
+
+Código: `ratchet_ldi_strategy` en `src/uvr_loan/backtest.py`. El mayor excedente se guarda en un diccionario `state`
+que `run_backtest` crea en cada corrida y pasa a la estrategia en cada revisión.
 
 ### Entre revisiones (cada mes)
 
@@ -602,31 +655,48 @@ Igual que el plan 3.
 
 ### Ejemplos (backtest con datos reales)
 
-Revisiones en que el filtro dejó un ETF por fuera:
+Millones de COP ($A$, $V$, $L$, $S$ y $P$ pasados a COP con la UVR de la revisión):
 
-| Revisión | ICOLCAP $g$ | CSPX $g$ | Fuera | Parte en ETF |
-|---|---|---|---|---|
-| abr-2020 | −23,5 % | +23,9 % | ICOLCAP | 28 % |
-| oct-2020 | −25,6 % | +24,7 % | ICOLCAP | 32 % |
-| oct-2022 | −9,2 % | +8,7 % | ICOLCAP | 39 % |
-| abr-2023 | −19,0 % | +17,3 % | ICOLCAP | 38 % |
-| oct-2023 | −3,5 % | −8,0 % | los dos | 0 % |
+| Revisión | $A$ | $V$ | $L$ | $S$ | $S^{\max}$ | $P$ | ETF plan 4 | ETF que tendría el plan 3 |
+|---|---|---|---|---|---|---|---|---|
+| oct-2016 | 760,0 | 0,0 | 419,9 | 340,1 | 340,1 | 692,0 | 272,1 (36 %) | 319,1 |
+| oct-2019 | 730,3 | 249,6 | 512,4 | 467,5 | 467,5 | 886,4 | 374,0 (51 %) | 455,3 |
+| abr-2020 | 602,8 | 337,0 | 491,8 | 448,0 | 477,0 | 873,4 | 265,6 (44 %) | 440,5 |
+| abr-2026 | 982,3 | 241,7 | 49,9 | 1.174,2 | 1.174,2 | 989,2 | 938,7 (96 %) | 938,7 |
+
+En oct-2016 el plan 4 pone 272,1M en ETF en vez de 319,1M: es el $0{,}80\,S$ de un máximo, con el tope del plan 3
+por encima. En abr-2020 (después de la caída de marzo) el excedente estaba 6 % por debajo de su máximo y los ETF
+bajaron a 60 % de lo que tendría el plan 3. En abr-2026 el excedente es grande frente al pasivo que queda y el tope (lo
+del plan 3) es el que manda.
 
 ### Riesgo y resultados
 
-- Sin meses con déficit.
-- Riqueza final 1.211,5M. Rentabilidad anual 11,0 %, volatilidad 7,7 %, máxima caída 7,1 %.
-- **Limitaciones del filtro:** solo ve pérdidas que ya pasaron (los últimos 12 meses) y decide cada $k$ meses: puede
-  sacar un ETF después de la caída y volver a comprarlo después de la subida. No pone un tope a la parte en ETF.
+- Sin meses con déficit. Dos veces el FIC quedó corto por muy poco y se vendieron ETF, como en el plan 3: jun-2021 y
+  jun-2022 (50.399 COP en total). La menor liquidez (FIC + ETF) en un mes de pago fue 305,6M.
+- Riqueza final 1.224,8M (plan 3: 1.352,5M). Rentabilidad anual 11,2 %, volatilidad 6,2 %, máxima caída 5,5 % (plan 3:
+  11,9 %, 8,3 % y 7,1 %).
+- **El trinquete cambia rentabilidad por estabilidad:** con estos datos, en que las acciones subieron, deja de ganar
+  127,7M frente al plan 3 a cambio de una volatilidad y una máxima caída cerca de 25 % menores. En los escenarios sintéticos
+  (`python -m uvr_loan.synthetic`) se compara en caminos que suben, bajan y oscilan.
+- La parte en ETF ya no depende de una señal de precios: depende de cuánto excedente hay y de cuánto se ha perdido
+  desde el máximo.
 
 ### Simplificaciones propias del plan 4
 
-Las mismas del plan 3.
+- **Trinquete solo en las revisiones:** el máximo y la exposición se revisan cada $k$ meses. Una caída de más de $d$
+  entre dos revisiones puede llevar los activos por debajo de $P_\tau$ (el riesgo de salto de CPPI); nunca por debajo
+  del piso, porque la escalera no se toca.
+- **$\varphi$ y $d$ fijos:** no se ajustan con el tiempo ni con la volatilidad observada.
+- **Valor de los CDT vivos a su tasa de compra:** $V_\tau$ es el valor acumulado, no un precio de mercado (los CDT no se
+  venden antes de vencer).
+- Además, las mismas del plan 3.
 
 ## Referencias bibliográficas
 
 - Sharpe, W. F. y Tint, L. G. (1990). "Liabilities – A New Approach". *Journal of Portfolio Management*, invierno de
   1990, 5–10.
+- Estep, T. y Kritzman, M. (1988). "TIPP: Insurance without complexity". *Journal of Portfolio Management*, 14(4),
+  38–42.
 - Black, F. y Perold, A. F. (1992). "Theory of constant proportion portfolio insurance". *Journal of Economic Dynamics
   and Control*, 16(3–4), 403–426.
 - Martellini, L. y Milhau, V. (2012). "Dynamic allocation decisions in the presence of funding ratio constraints".

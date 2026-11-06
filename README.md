@@ -108,8 +108,9 @@ program in UVR that covers every remaining payment and maximizes the final wealt
 returns (deflated with the high inflation scenario, like plans 1 and 3), and the results use the observed CDT rates. Plan 3 (LDI) computes a floor, the smallest budget of that same
 LP that covers every remaining payment under high inflation, gives the CDT ladder 1.05 × floor and puts the rest in
 ICOLCAP and CSPX, split by inverse volatility (CPPI with multiplier 1: a fall of the ETFs never reaches the money for
-the payments). Plan 4 (`trend_ldi`) is plan 3 with a trend filter: an ETF whose return over the last
-`data.trend_window_months` (12) months is negative at a review gets no money, and its share stays in the FIC.
+the payments). Plan 4 (`ratchet_ldi`) is plan 3 with a ratchet (TIPP): it protects `protected_share` (80 %) of
+the highest real surplus reached at a review (assets − cost of covering every remaining payment, in UVR), puts
+(assets − protected level) / `max_fall` in the ETFs (never more than plan 3), and buys more CDTs with the rest.
 Every reported peso comes from observed data. The base inflation of the
 scenarios is the UVR inflation of the last `base_lookback_months` months known at each review. The full rules, with
 notation, examples and simplifications, are in [`docs/reglas_de_inversion.md`](docs/reglas_de_inversion.md).

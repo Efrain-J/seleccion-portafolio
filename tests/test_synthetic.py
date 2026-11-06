@@ -105,17 +105,13 @@ def test_scenarios_share_the_noise_draws():
     assert up - down == pytest.approx(0.30 * np.arange(25) / 12)
 
 
-def test_only_etf_price_trend_and_volatility_columns_change_after_t0():
+def test_only_etf_price_and_volatility_columns_change_after_t0():
     cfg = synthetic_cfg()
     panel = make_panel(cfg)
     new = synthetic_panels(panel, cfg)["both_down"]
     changed = [c for c in panel.columns if not new[c].equals(panel[c])]
     assert sorted(changed) == sorted(
-        [
-            f"{name}_{column}"
-            for name in ("icolcap", "cspx")
-            for column in ("price_cop", "trend_ret", "vol_ea")
-        ]
+        [f"{name}_{column}" for name in ("icolcap", "cspx") for column in ("price_cop", "vol_ea")]
     )
     pd.testing.assert_frame_equal(new.loc[: T0 - 1], panel.loc[: T0 - 1])
 
@@ -131,32 +127,18 @@ def test_sigma_can_be_overridden_per_etf():
     assert new.loc[months, "cspx_price_cop"].std() > 0
 
 
-def test_trend_filter_leaves_the_etfs_when_both_fall():
-    """With sigma 0 both ETFs fall every month after t0 (the history before is flat), so the 12-month
-    return is negative at every review after t0: plan 4 holds no ETF there, plan 3 still does."""
+def test_ratchet_holds_less_etf_than_plan_3_when_both_fall():
+    """With sigma 0 both ETFs fall every month: the surplus falls from its peak at t0, so at every
+    later review plan 4 has cut its ETFs further than plan 3 (as a share of its wealth)."""
     cfg = synthetic_cfg(sigma_ea=0.0)
     panel = synthetic_panels(make_panel(cfg), cfg)["both_down"]
     payments = make_schedule({m: 10.0 for m in range(13, 25)}, horizon=24)
     plan3 = run_backtest(panel, payments, cfg, "ldi").set_index("month")
-    plan4 = run_backtest(panel, payments, cfg, "trend_ldi").set_index("month")
-    assert plan4.loc[0, "etf_cop"] > 0  # at t0 the trailing return is 0: not below the minimum
+    plan4 = run_backtest(panel, payments, cfg, "ratchet_ldi").set_index("month")
     for review in (6, 12, 18):
-        assert plan4.loc[review, "etf_cop"] == 0
-        assert plan3.loc[review, "etf_cop"] > 0
-
-
-def test_with_prices_updates_the_trailing_return_with_the_new_prices():
-    """The trend after the change must be the 12-month return of the new price path, history included."""
-    cfg = synthetic_cfg()
-    panel = make_panel(cfg)
-    rng = np.random.default_rng(0)
-    panel["icolcap_price_cop"] = 100 * np.cumprod(1 + rng.normal(0.01, 0.04, len(panel)))
-    panel["icolcap_trend_ret"] = panel["icolcap_price_cop"].pct_change(12)
-    months = [T0 + m for m in range(25)]
-    new_price = panel.loc[months, "icolcap_price_cop"].to_numpy() * np.linspace(1.0, 0.5, 25)
-    new = with_prices(panel, cfg, {"icolcap": new_price})
-    expected = new["icolcap_price_cop"].pct_change(12)
-    assert new.loc[months, "icolcap_trend_ret"].tolist() == pytest.approx(expected[months].tolist())
+        share3 = plan3.loc[review, "etf_cop"] / plan3.loc[review, "wealth_cop"]
+        share4 = plan4.loc[review, "etf_cop"] / plan4.loc[review, "wealth_cop"]
+        assert share4 < share3
 
 
 def test_with_prices_leaves_other_etfs_alone():
@@ -164,7 +146,7 @@ def test_with_prices_leaves_other_etfs_alone():
     panel = make_panel(cfg)
     new = with_prices(panel, cfg, {"cspx": np.full(25, 50.0)})
     pd.testing.assert_series_equal(new["icolcap_price_cop"], panel["icolcap_price_cop"])
-    pd.testing.assert_series_equal(new["icolcap_trend_ret"], panel["icolcap_trend_ret"])
+    pd.testing.assert_series_equal(new["icolcap_vol_ea"], panel["icolcap_vol_ea"])
 
 
 # Volatility follows the new prices (pooled with the historical one while the window is short).
@@ -254,7 +236,7 @@ def test_distribution_summary_of_a_hand_made_table():
         {
             "scenario": ["s"] * 6,
             "path": [0, 0, 1, 1, 2, 2],
-            "plan": ["ldi", "trend_ldi"] * 3,
+            "plan": ["ldi", "ratchet_ldi"] * 3,
             "final_wealth_net_cop": [100.0, 90.0, 200.0, 210.0, 300.0, 250.0],
             "max_drawdown": [0.1, 0.05, 0.2, 0.1, 0.3, 0.2],
             "shortfall_months": [0, 0, 1, 0, 0, 0],
@@ -266,7 +248,7 @@ def test_distribution_summary_of_a_hand_made_table():
     assert table.loc["ldi", "wealth_p50"] == pytest.approx(200.0)
     assert table.loc["ldi", "shortfall_share"] == pytest.approx(1 / 3)
     assert np.isnan(table.loc["ldi", "beats_plan3"])
-    assert table.loc["trend_ldi", "beats_plan3"] == pytest.approx(1 / 3)  # only path 1
+    assert table.loc["ratchet_ldi", "beats_plan3"] == pytest.approx(1 / 3)  # only path 1
     assert table.loc["cdt_ladder", "wealth_p10"] == table.loc["cdt_ladder", "wealth_p90"] == 150.0
     assert table.loc["cdt_ladder", "beats_plan3"] == pytest.approx(1 / 3)  # 150 > 100 only
     assert table.loc["cdt_ladder", "shortfall_share"] == 1.0

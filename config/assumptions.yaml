@@ -33,7 +33,6 @@ data:
   end: "2026-11-30"
   etf_history_start: "2013-01-01"  # ETFs are downloaded from here: their volatility needs years before t0
   vol_window_months: 36        # months of returns behind <name>_vol_ea (only months up to each one)
-  trend_window_months: 12      # months behind <name>_trend_ret, the ETF return used by the trend filter of plan 4
   etfs:                        # Yahoo Finance, adjusted close; panel column <name>_price_cop (USD converted with the TRM)
     icolcap: {ticker: ICOLCAP.CL, currency: COP}   # iShares MSCI COLCAP (BVC)
     cspx: {ticker: CSPX.L, currency: USD}          # iShares Core S&P 500 UCITS, Irish, accumulating (LSE, USD line)
@@ -60,8 +59,10 @@ ldi:                           # Plan 3: CDT ladder up to the floor (x 1.05), ET
   floor_buffer: 0.05           # the ladder gets (1 + buffer) x floor; the rest of the free money goes to the ETFs
   growth_assets: [icolcap, cspx]   # names in data.etfs; split by inverse volatility (data.vol_window_months)
 
-trend_ldi:                     # Plan 4: plan 3 with a trend filter on the ETFs (same floor, ladder and ETFs: ldi.*)
-  min_trailing_return: 0.0     # an ETF whose return of the last data.trend_window_months months is below this gets no money; its share stays in the FIC
+ratchet_ldi:                   # Plan 4: plan 3 with a ratchet (TIPP) on the real surplus S = assets - liabilities, in UVR (same floor, ladder and ETFs: ldi.*)
+  protected_share: 0.80        # phi: share of the highest surplus of the run that is protected, P = liabilities + phi * peak S
+  max_fall: 0.25               # ETF fall between two reviews that takes the assets down to P at most: ETFs = (assets - P) / max_fall, capped at plan 3's ETFs.
+                               # Worst 6-month falls in COP since 2013: ICOLCAP -30.5 % (to 2020-05), CSPX -17.4 % (to 2022-06)
 
 synthetic_etfs:                # Made-up ETF paths from t0 (python -m uvr_loan.synthetic); rates, UVR, FIC and payments stay historical
   seed: 42                     # the same seed gives the same paths; path j has the same draws in every scenario, each ETF its own

@@ -9,8 +9,7 @@ Each ETF follows, from its real price P_0 at t0 (t = m / 12 years):
 with W a Brownian motion sampled monthly. The scenarios are in `synthetic_etfs` of the config. There
 are `n_paths` paths drawn from one `seed`; path j uses the same noise draws in every scenario, so the
 scenarios differ only in their deterministic part, and each ETF has its own draws. `with_prices`
-updates `<name>_trend_ret` (the trend filter of plan 4 sees the new prices) and `<name>_vol_ea` (the
-split between the ETFs follows the new volatility).
+also updates `<name>_vol_ea`, so the split between the ETFs follows the new volatility.
 
 Plan 2 holds no ETF, so it is run once. Plans 3 and 4 are run on every path (`monte_carlo`, in
 parallel) and summarized as distributions (`distribution_summary`).
@@ -29,10 +28,9 @@ import pandas as pd
 from uvr_loan.backtest import PRICE_SUFFIX, run_backtest, summary
 from uvr_loan.cashflows import month_to_period
 
-TREND_SUFFIX = "_trend_ret"
 VOL_SUFFIX = "_vol_ea"
-PLANS = ["cdt_ladder", "ldi", "trend_ldi"]  # plan 1 is left out: it holds no ETF
-ETF_PLANS = ("ldi", "trend_ldi")  # the plans that depend on the ETF prices
+PLANS = ["cdt_ladder", "ldi", "ratchet_ldi"]  # plan 1 is left out: it holds no ETF
+ETF_PLANS = ("ldi", "ratchet_ldi")  # the plans that depend on the ETF prices
 METRICS = [
     "final_wealth_net_cop",
     "shortfall_months",
@@ -46,10 +44,7 @@ PERCENTILES = (10, 50, 90)
 
 def with_prices(panel: pd.DataFrame, cfg: dict[str, Any], prices: dict[str, np.ndarray]) -> pd.DataFrame:
     """Copy of the panel with the prices of months t0 .. t0 + horizon of each ETF in `prices` replaced,
-    and its `<name>_trend_ret` and `<name>_vol_ea` updated with the new prices.
-
-    Trend: with f_m = new price / real price (1 before t0), 1 + new trend_m = (1 + real trend_m) * f_m /
-    f_{m-w}, with w = `data.trend_window_months`.
+    and its `<name>_vol_ea` updated with the new prices.
 
     Volatility: the panel does not hold the 36 months before t0, so the months of the window before t0
     keep the volatility of t0, sigma_0. With w = `data.vol_window_months`, n = min(m, w) new monthly
@@ -61,11 +56,7 @@ def with_prices(panel: pd.DataFrame, cfg: dict[str, Any], prices: dict[str, np.n
     new = panel.copy()
     for name, price in prices.items():
         column, price = name + PRICE_SUFFIX, np.asarray(price, dtype=float)
-        factor = pd.Series(1.0, index=panel.index)
-        factor[months] = price / panel.loc[months, column].to_numpy()
         new.loc[months, column] = price
-        before = factor.shift(data["trend_window_months"]).fillna(1.0)
-        new[name + TREND_SUFFIX] = (1 + panel[name + TREND_SUFFIX]) * factor / before - 1
         new.loc[months[1:], name + VOL_SUFFIX] = _pooled_volatility(
             price, panel.loc[months[0], name + VOL_SUFFIX], data["vol_window_months"]
         )
@@ -288,11 +279,11 @@ def distribution_summary(
 
 
 def prices_table(panels: dict[str, pd.DataFrame], cfg: dict[str, Any]) -> pd.DataFrame:
-    """Long table with month, scenario and the price and trailing return of each ETF, months 0..horizon."""
+    """Long table with month, scenario and the price of each ETF, months 0..horizon."""
     bt = cfg["backtest"]
     t0 = pd.Period(bt["t0"], "M")
     months = [t0 + m for m in range(bt["horizon_months"] + 1)]
-    columns = [name + suffix for name in cfg["data"]["etfs"] for suffix in (PRICE_SUFFIX, TREND_SUFFIX)]
+    columns = [name + PRICE_SUFFIX for name in cfg["data"]["etfs"]]
     frames = [
         panel.loc[months, columns].assign(month=range(len(months)), scenario=scenario)
         for scenario, panel in panels.items()
