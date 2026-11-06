@@ -175,7 +175,7 @@ def ladder_purchases(
     return buy
 
 
-if __name__ == "__main__":
+def main() -> None:
     from uvr_loan.data.cleaning import load_monthly_panel
 
     cfg = load_assumptions()
@@ -196,3 +196,7 @@ if __name__ == "__main__":
     )
     for name, amount in alloc.items():
         print(f"  {name:<14} {amount:>16,.0f} COP")
+
+
+if __name__ == "__main__":
+    main()

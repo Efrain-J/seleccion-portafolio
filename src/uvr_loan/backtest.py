@@ -351,7 +351,7 @@ def summary(results: pd.DataFrame) -> dict[str, float]:
     }
 
 
-if __name__ == "__main__":
+def main() -> None:
     from uvr_loan.data.cleaning import load_monthly_panel
 
     cfg = load_assumptions()
@@ -368,3 +368,7 @@ if __name__ == "__main__":
     table.to_csv(RESULTS_DIR / "summary.csv", index_label="metric")
     print(table.to_string(float_format=lambda x: f"{x:,.4f}"))
     print(f"Written to {RESULTS_DIR}")
+
+
+if __name__ == "__main__":
+    main()

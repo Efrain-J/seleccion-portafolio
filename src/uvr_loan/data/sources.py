@@ -153,7 +153,7 @@ def load_etf_prices(cfg: dict[str, Any]) -> dict[str, pd.Series]:
     }
 
 
-if __name__ == "__main__":
+def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     cfg = load_assumptions()
     for name, s in {**load_raw(cfg), **load_etf_prices(cfg)}.items():
@@ -162,3 +162,7 @@ if __name__ == "__main__":
     print(
         f"fic      {len(funds):>6} rows  {funds['fecha_corte'].min():%Y-%m-%d} -> {funds['fecha_corte'].max():%Y-%m-%d}"
     )
+
+
+if __name__ == "__main__":
+    main()
