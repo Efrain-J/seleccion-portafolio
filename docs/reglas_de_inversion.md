@@ -134,7 +134,9 @@ $$
 
 - **Inflación proyectada (S14):** la base es la inflación de los últimos 6 meses medida con la UVR
   ($\pi^{\text{base}}_\tau$). Es un modelo provisional hasta que exista el modelo de inflación (`scenarios` en
-  `src/uvr_loan/inflation.py`). Con 6 meses la base tiene estacionalidad: en abril ve los meses de inflación alta de
+  `src/uvr_loan/inflation.py`). Con `inflation_scenarios.source: forecast` la base sale del pronóstico del modelo
+  Hull-White (`src/uvr_loan/inflation_model/`, mediana o percentil 99,5 según `forecast_stat`) en lugar de esa
+  inflación reciente. Con 6 meses la base tiene estacionalidad: en abril ve los meses de inflación alta de
   comienzo de año y en octubre los de inflación baja.
 - **FIC:** rinde lo que rindió un índice de los FIC de mercado monetario reales: el valor de la unidad de cada fondo,
   publicado a diario por la Superfinanciera, promediado según el tamaño de cada fondo. Ver `data/SOURCES.md`.

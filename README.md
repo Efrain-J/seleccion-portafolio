@@ -128,8 +128,20 @@ in nov-2019 with no recovery); it writes `results/stress_summary.csv`:
 .venv\Scripts\python -m uvr_loan.stress
 ```
 
-Run every plan with the inflation forecast of the hull_white project instead of the trailing UVR inflation
-(`inflation_scenarios.source: forecast`):
+Generate the inflation forecast (Hull-White model in `src/uvr_loan/inflation_model/`):
+
+```
+.venv\Scripts\python -m uvr_loan.inflation_model.forecast
+```
+
+It needs the Nelson-Siegel betas of the Banco de la República in `data/raw/betas_historicos.csv`, downloaded by hand
+(see [`data/SOURCES.md`](data/SOURCES.md)), and takes about 15 seconds. It rewrites `inflation_scenarios.forecast_file`
+(`data/forecasts/hw_inflation_forecasts.csv`; the committed file is what it produces today), and every parameter of the
+model is in the `inflation_model` section of `config/assumptions.yaml`. The forecast of each month is the Hull-White simulation of the
+implied inflation (COP against UVR curves) for the next `horizon_months`, corrected with the bias, the seasonality and
+the missing dispersion of the months already realized (the realized inflation comes from the UVR).
+
+Run every plan with that forecast instead of the trailing UVR inflation (`inflation_scenarios.source: forecast`):
 
 ```
 .venv\Scripts\python -m uvr_loan.forecast_runs
@@ -162,7 +174,8 @@ Current structure. Planned additions (diagnosis, stress tests, report figures) a
 │   └── reglas_de_inversion.md  # Investment rules of each plan
 ├── data/
 │   ├── SOURCES.md            # Where every series comes from (versioned)
-│   ├── raw/                  # Download cache (UVR, CDT rates, TRM, ETFs, FIC reports)
+│   ├── raw/                  # Download cache (UVR, CDT rates, TRM, ETFs, FIC reports) and the hand-downloaded betas
+│   ├── forecasts/            # hw_inflation_forecasts.csv: median and p99.5 of the 6-month inflation (versioned)
 │   └── processed/            # monthly_panel.csv and payment_schedule_uvr.csv
 ├── notebooks/
 │   └── backtest_plans.ipynb  # Wealth, liquidity and UVR charts of every plan
@@ -173,7 +186,13 @@ Current structure. Planned additions (diagnosis, stress tests, report figures) a
 │   ├── data/
 │   │   ├── sources.py        # Automatic data download with caching
 │   │   └── cleaning.py       # Builds the monthly data panel
-│   ├── inflation.py          # Base inflation (last 6 months of the UVR), scenarios and projected UVR
+│   ├── inflation.py          # Base inflation (trailing UVR or forecast file), scenarios and projected UVR
+│   ├── inflation_model/      # Hull-White forecast of the 6-month inflation (writes data/forecasts/)
+│   │   ├── nelson_siegel.py  # Betas to rates by node, implied inflation, rolling volatility
+│   │   ├── hull_white.py     # The simulation (time-dependent kappa and sigma)
+│   │   ├── cpi.py            # Monthly CPI from the UVR, seasonal factors, realized inflation
+│   │   └── forecast.py       # Bias/seasonality correction and the forecast file (python -m ...)
+│   ├── forecast_runs.py      # Every plan with the trailing / median / p99.5 inflation base
 │   ├── cashflows.py          # Review months and loan payments converted from UVR to COP
 │   ├── portfolio.py          # Plan 1 rule, plan 2 LP (ladder_purchases), plan 3 floor and ETF weights
 │   ├── backtest.py           # Monthly simulation of every plan (PLANS) and summary metrics

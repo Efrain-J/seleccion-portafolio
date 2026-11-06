@@ -59,6 +59,20 @@ Weighted average rate of 360-day CDTs. It is the rate of the 12-month CDTs of pl
 ### DTF 90 days (65)
 Weighted average rate of 90-day CDTs. It is the rate of the 3-month CDTs of plan 2.
 
+### Nelson-Siegel betas (downloaded by hand)
+Daily betas (percent) and tau of the zero-coupon curves of the TES in pesos (COP) and in UVR, published by the Banco de
+la República (series "Betas TES pesos" and "Betas TES UVR" of its statistics portal). They feed the inflation model
+(`src/uvr_loan/inflation_model/`), not the panel. File: `data/raw/betas_historicos.csv` (not versioned), `;`-separated, header
+`Fecha;B0_COP;B1_COP;B2_COP;TAO_COP;B0_UVR;B1_UVR;B2_UVR;TAO_UVR`, one row per calendar day from 2004-08-31 to
+2026-07-31 (29 % of the rows are weekends and holidays that repeat the previous value). The UVR betas start in
+2004-08-31 but the COP betas are empty until 2012-01-07, so the model's usable history starts there.
+
+- It cannot be downloaded by code: the portal blocks automated requests, so the file is exported by hand and has to be
+  placed in `data/raw/` (the path is `inflation_model.betas_file` in the config). `load_betas` says so when it is missing.
+- The Banco corrected the UVR betas in April 2020 (update of the inputs): use a version of the file downloaded after that.
+- Without the file the forecasts cannot be regenerated; the committed `data/forecasts/hw_inflation_forecasts.csv` is
+  the result of the last run and is all the plans need.
+
 ## Superintendencia Financiera – FIC returns (datos.gov.co)
 
 - Dataset "Rentabilidades de los Fondos de Inversión Colectiva (FIC)", ID `qhpu-8ixx`, API
