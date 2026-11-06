@@ -91,7 +91,7 @@ def schedule(loan: dict[str, Any]) -> pd.DataFrame:
     )
 
 
-if __name__ == "__main__":
+def main() -> None:
     table = schedule(load_assumptions()["loan"])
     final_balance = table["closing_balance_uvr"].iloc[-1]
     assert abs(final_balance) < 1e-6, f"Final balance is not zero: {final_balance}"
@@ -104,3 +104,7 @@ if __name__ == "__main__":
     print(f"Number of installments: {paid.sum()}")
     print(f"Final balance: {final_balance:.6f}")
     print(f"Written to {OUTPUT_PATH}")
+
+
+if __name__ == "__main__":
+    main()

@@ -147,10 +147,14 @@ def load_monthly_panel(cfg: dict[str, Any]) -> pd.DataFrame:
     return panel
 
 
-if __name__ == "__main__":
+def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     panel = load_monthly_panel(load_assumptions())
     PANEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     panel.to_csv(PANEL_PATH, index_label="month")
     print(panel.loc["2016-10":"2016-12"])
     print(f"{len(panel)} months written to {PANEL_PATH}")
+
+
+if __name__ == "__main__":
+    main()

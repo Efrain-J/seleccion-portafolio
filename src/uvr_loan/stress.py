@@ -91,7 +91,7 @@ def stress_summary(panel: pd.DataFrame, payment_schedule: pd.DataFrame, cfg: dic
     return pd.DataFrame(rows)
 
 
-if __name__ == "__main__":
+def main() -> None:
     from uvr_loan.amortization import schedule
     from uvr_loan.config import RESULTS_DIR, load_assumptions
     from uvr_loan.data.cleaning import load_monthly_panel
@@ -103,3 +103,7 @@ if __name__ == "__main__":
     pd.set_option("display.width", 200)
     print(table.to_string(index=False, float_format=lambda x: f"{x:,.4f}"))
     print(f"Written to {RESULTS_DIR}")
+
+
+if __name__ == "__main__":
+    main()

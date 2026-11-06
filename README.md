@@ -23,35 +23,46 @@ The project:
 
 ## Setup
 
-The virtual environment is managed with [uv](https://docs.astral.sh/uv/):
+The environment is managed with [uv](https://docs.astral.sh/uv/). `uv.lock` pins the versions and
+`.python-version` pins the interpreter; `uv run` keeps the environment in sync, so there is no need to activate it:
 
 ```
-uv venv
-uv pip install -e ".[dev]"
+uv sync          # creates .venv, installs the project (editable) and the dev group
 ```
 
 Lint and format with [ruff](https://docs.astral.sh/ruff/) before committing:
 
 ```
-ruff check .
-ruff format .
+uv run ruff check .
+uv run ruff format .
 ```
 
 Run the tests with [pytest](https://docs.pytest.org/). Tests marked `network` download real data:
 
 ```
-pytest -m "not network"      # offline
-pytest                       # everything
-pytest --cov=uvr_loan        # with coverage
+uv run pytest -m "not network"      # offline
+uv run pytest                       # everything
+uv run pytest --cov=uvr_loan        # with coverage
 ```
 
 ## Usage
+
+Every step has a command registered in `pyproject.toml`, so `uv run <command>` is a shortcut for `uv run python -m <module>`:
+
+| Command | Module |
+|---|---|
+| `uvr-amortization` | `uvr_loan.amortization` |
+| `uvr-download` | `uvr_loan.data.sources` |
+| `uvr-panel` | `uvr_loan.data.cleaning` |
+| `uvr-portfolio` | `uvr_loan.portfolio` |
+| `uvr-backtest` | `uvr_loan.backtest` |
+| `uvr-stress` | `uvr_loan.stress` |
 
 Generate the loan payment schedule in UVR (month by month: balance, interest, installment, prepayment and total
 payment):
 
 ```
-.venv\Scripts\python -m uvr_loan.amortization
+uv run python -m uvr_loan.amortization
 ```
 
 It writes `data/processed/payment_schedule_uvr.csv` and checks that the balance at month 120 is zero. The fixed
@@ -61,8 +72,8 @@ installment for months 37–120 is 20,379.5327 UVR; months 48 and 60 add the 50,
 Download the market data and build the monthly panel (end of month, rates as decimals):
 
 ```
-.venv\Scripts\python -m uvr_loan.data.sources     # cache in data/raw/
-.venv\Scripts\python -m uvr_loan.data.cleaning    # data/processed/monthly_panel.csv
+uv run python -m uvr_loan.data.sources     # cache in data/raw/
+uv run python -m uvr_loan.data.cleaning    # data/processed/monthly_panel.csv
 ```
 
 Naming: money ends in `_cop` or `_uvr`; rates are decimals ending in `_ea` (effective annual, known at the close of
@@ -84,7 +95,7 @@ Endpoints, units, assumptions and known issues of every source are in [`data/SOU
 Print the conservative allocation (Plan 1) at t0:
 
 ```
-.venv\Scripts\python -m uvr_loan.portfolio
+uv run python -m uvr_loan.portfolio
 ```
 
 Plan 1 (fixed income only) keeps in the FIC the payments due before its new CDT matures (high inflation scenario; the
@@ -106,7 +117,7 @@ notation, examples and simplifications, are in [`docs/reglas_de_inversion.md`](d
 Run the dynamic backtest of every plan from t0 to the end of the horizon (reviews every `review_every_months` months):
 
 ```
-.venv\Scripts\python -m uvr_loan.backtest
+uv run python -m uvr_loan.backtest
 ```
 
 It writes `results/backtest_<plan>.csv` for each plan (one row per month: `uvr_cop`, `payment_cop`, `shortfall_cop`,
@@ -125,7 +136,7 @@ Run the stress test (plans 2, 3 and 4 when only the ETF prices change: −50 % a
 in nov-2019 with no recovery); it writes `results/stress_summary.csv`:
 
 ```
-.venv\Scripts\python -m uvr_loan.stress
+uv run python -m uvr_loan.stress
 ```
 
 The notebook `notebooks/backtest_plans.ipynb` plots the wealth and the FIC liquidity of every plan and the real versus
