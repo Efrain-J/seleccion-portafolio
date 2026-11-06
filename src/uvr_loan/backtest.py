@@ -199,19 +199,21 @@ def ratchet_ldi_strategy(
 ) -> Allocation:
     """Plan 4: plan 3 with a ratchet (TIPP, Estep and Kritzman 1988) on the real surplus.
 
-    In UVR at the review: A = free money, V = value of the live CDTs, L = cost of covering every
-    remaining payment from scratch (`ladder_floor` without live CDTs), F = floor of the free money
-    (as in plan 3) and b = `ldi.floor_buffer`. The surplus is S = A + V - L: assets minus liabilities
-    of the whole portfolio. Loan payments lower assets and L alike, so S moves with the markets, not
-    with the loan; and CDTs bought with surplus money stay in S at the next review. The real surplus
-    can't use A - F: live CDTs worth more than the payments they cover would not count anywhere.
+    Symbols as in docs/reglas_de_inversion.md. In UVR at the review: A = free money, V = value of the
+    live CDTs, L = cost of covering every remaining payment from scratch (`ladder_floor` without live
+    CDTs), B = floor of the free money (as in plan 3) and b = `ldi.floor_buffer`. The surplus is
+    S = A + V - L: assets minus liabilities of the whole portfolio. Paying installments and the UVR
+    indexation do not change S; ETF prices, CDT rates and inflation against the expected one do.
+    CDTs bought with surplus money stay in S at the next review. The surplus can't use A - B: live
+    CDTs worth more than the payments they cover would not count anywhere.
 
     `state["peak_surplus_uvr"]` keeps the highest S of the run (this review included). The protected
-    level of the whole portfolio is P = L + phi * max(peak, 0), with phi = `ratchet_ldi.protected_share`,
-    and the ETFs get E = clip(m (A + V - P), 0, max(A - (1 + b) F, 0)), with m = 1 / `ratchet_ldi.max_fall`:
-    a fall of the ETFs of `max_fall` between two reviews takes the assets down to P at most. The cap
-    is plan 3's ETF money, so the ladder LP always gets at least (1 + b) F and buys CDTs with A - E.
-    At a peak the ETFs get m (1 - phi) S, less than plan 3 when m (1 - phi) < 1.
+    level of the whole portfolio is Z = L + phi * max(peak, 0), with phi = `ratchet_ldi.protected_share`,
+    and the ETFs get G = clip(kappa (A + V - Z), 0, max(A - (1 + b) B, 0)), with
+    kappa = 1 / `ratchet_ldi.max_fall` (delta): when the cap does not bind, a fall of the ETFs of delta
+    between two reviews takes the assets down to Z at most. The cap is plan 3's ETF money, so the ladder
+    LP always gets at least (1 + b) B and buys CDTs with A - G. At a peak the ETFs get
+    kappa (1 - phi) S or the cap, so never more than plan 3.
     Raises ValueError if `max_fall` is not positive.
     """
     params = cfg["ratchet_ldi"]

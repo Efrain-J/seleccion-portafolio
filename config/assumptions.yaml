@@ -60,8 +60,8 @@ ldi:                           # Plan 3: CDT ladder up to the floor (x 1.05), ET
   growth_assets: [icolcap, cspx]   # names in data.etfs; split by inverse volatility (data.vol_window_months)
 
 ratchet_ldi:                   # Plan 4: plan 3 with a ratchet (TIPP) on the real surplus S = assets - liabilities, in UVR (same floor, ladder and ETFs: ldi.*)
-  protected_share: 0.80        # phi: share of the highest surplus of the run that is protected, P = liabilities + phi * peak S
-  max_fall: 0.25               # ETF fall between two reviews that takes the assets down to P at most: ETFs = (assets - P) / max_fall, capped at plan 3's ETFs.
+  protected_share: 0.80        # phi: share of the highest surplus of the run that is protected, Z = liabilities + phi * peak S
+  max_fall: 0.25               # delta: ETF fall between two reviews that takes the assets down to Z at most: ETFs = (assets - Z) / delta, capped at plan 3's ETFs.
                                # Worst 6-month falls in COP since 2013: ICOLCAP -30.5 % (to 2020-05), CSPX -17.4 % (to 2022-06)
 
 synthetic_etfs:                # Made-up ETF paths from t0 (python -m uvr_loan.synthetic); rates, UVR, FIC and payments stay historical
