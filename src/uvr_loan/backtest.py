@@ -11,7 +11,7 @@ must cover a payment, each one is sold in proportion to its value.
 Plan 4 (`trend_ldi`) is plan 3 with a trend filter: an ETF with a negative return over the last
 months gets no money at a review, and its share stays in the FIC.
 
-Run `python -m uvr_loan.backtest` to write the results of every plan to results/.
+Run `python -m uvr_loan.backtest` to write the results of every plan to results/backtest/.
 """
 
 from typing import Any, NamedTuple
@@ -21,7 +21,7 @@ import pandas as pd
 
 from uvr_loan.amortization import schedule
 from uvr_loan.cashflows import decision_months, month_to_period, projected_payments_cop
-from uvr_loan.config import RESULTS_DIR, load_assumptions
+from uvr_loan.config import BACKTEST_DIR, load_assumptions
 from uvr_loan.inflation import project_uvr, scenarios
 from uvr_loan.portfolio import (
     conservative_allocation,
@@ -356,18 +356,18 @@ def main() -> None:
 
     cfg = load_assumptions()
     panel, payment_schedule = load_monthly_panel(cfg), schedule(cfg["loan"])
-    RESULTS_DIR.mkdir(exist_ok=True)
+    BACKTEST_DIR.mkdir(parents=True, exist_ok=True)
 
     metrics = {}
     for name in PLANS:
         results = run_backtest(panel, payment_schedule, cfg, name)
-        results.to_csv(RESULTS_DIR / f"backtest_{name}.csv", index=False)
+        results.to_csv(BACKTEST_DIR / f"{name}.csv", index=False)
         metrics[name] = summary(results)
 
     table = pd.DataFrame(metrics)
-    table.to_csv(RESULTS_DIR / "summary.csv", index_label="metric")
+    table.to_csv(BACKTEST_DIR / "summary.csv", index_label="metric")
     print(table.to_string(float_format=lambda x: f"{x:,.4f}"))
-    print(f"Written to {RESULTS_DIR}")
+    print(f"Written to {BACKTEST_DIR}")
 
 
 if __name__ == "__main__":

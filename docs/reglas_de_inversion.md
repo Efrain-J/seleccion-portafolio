@@ -623,42 +623,6 @@ Revisiones en que el filtro dejó un ETF por fuera:
 
 Las mismas del plan 3.
 
-## Prueba de estrés: ETF con mal desempeño
-
-`python -m uvr_loan.stress` (`src/uvr_loan/stress.py`) repite el backtest de los planes 2, 3 y 4 cambiando solo los
-precios de los ETF desde $t_0$; tasas, UVR, FIC y pagos son los observados. Resultados en `results/stress_summary.csv`.
-
-| Escenario | Cómo se construye |
-|---|---|
-| Real | Precios observados |
-| ETF −50 % | Cada ETF conserva sus rendimientos mensuales observados menos una constante, y termina en 50 % de su precio de oct-2016 |
-| ETF −80 % | Igual, terminando en 20 % |
-| Caída −60 % | Precios observados hasta oct-2019 (la revisión antes de la primera cuota), caída de 60 % en nov-2019 y precios planos después |
-
-El rendimiento de 12 meses $g_i(\tau)$ del plan 4 se recalcula con los precios del escenario. Las volatilidades
-$\sigma_i(\tau)$ quedan las observadas: solo cambian el reparto entre los dos ETF.
-
-**Riqueza neta final** (después de pagar el crédito y de restar lo que quedó sin pagar):
-
-| Escenario | Plan 2 | Plan 3 | Plan 4 |
-|---|---|---|---|
-| Real | 780,1M | 1.352,5M | 1.211,5M |
-| ETF −50 % | 780,1M | 252,0M | 432,3M |
-| ETF −80 % | 780,1M | 128,1M | 421,9M |
-| Caída −60 % | 780,1M | 254,3M | 272,5M |
-
-**Máxima caída:**
-
-| Escenario | Plan 2 | Plan 3 | Plan 4 |
-|---|---|---|---|
-| Real | 0 | 7,1 % | 7,1 % |
-| ETF −50 % | 0 | 11,9 % | 6,3 % |
-| ETF −80 % | 0 | 14,4 % | 8,2 % |
-| Caída −60 % | 0 | 28,5 % | 28,5 % |
-
-**Meses con déficit:** 0 para los planes 3 y 4 en todos los escenarios; 2 para el plan 2 en todos (no tiene ETF, así
-que los escenarios no lo cambian).
-
 ## Referencias bibliográficas
 
 - Sharpe, W. F. y Tint, L. G. (1990). "Liabilities – A New Approach". *Journal of Portfolio Management*, invierno de
