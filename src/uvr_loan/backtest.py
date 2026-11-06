@@ -28,6 +28,7 @@ from uvr_loan.portfolio import (
     inverse_volatility_weights,
     ladder_floor,
     ladder_purchases,
+    payments_by_month,
 )
 
 # A fixed-rate CDT lot: `principal_cop` bought in month `buy_month` at the annual `rate_ea`,
@@ -268,23 +269,27 @@ def run_backtest(
     """
     bt = cfg["backtest"]
     reviews = set(decision_months(bt))
-    payments_uvr = payment_schedule.set_index("month")["total_payment_uvr"]
+    payments_uvr = payments_by_month(payment_schedule, bt["horizon_months"])
     allocate = PLANS[plan]
     names = list(cfg["data"]["etfs"])
     check_panel(panel, bt, [name + PRICE_SUFFIX for name in names])
+    # The columns used every month, as arrays indexed by month (pandas access per month is slow).
+    periods = [month_to_period(bt["t0"], m) for m in range(bt["horizon_months"] + 1)]
+    used = panel.loc[periods]
+    fic_ret, uvr = used["fic_ret_m"].to_numpy(), used["uvr_cop"].to_numpy()
+    price_arrays = {name: used[name + PRICE_SUFFIX].to_numpy() for name in names}
 
     fic, lots = float(cfg["initial_capital_cop"]), []
     units = dict.fromkeys(names, 0.0)
     rows = []
     for m in range(bt["horizon_months"] + 1):
-        row = panel.loc[month_to_period(bt["t0"], m)]
-        prices = {name: row[name + PRICE_SUFFIX] for name in names}
+        prices = {name: price_arrays[name][m] for name in names}
         payment = shortfall = etf_sold = 0.0
         if m > 0:
-            fic *= 1 + row["fic_ret_m"]  # realized return of the FIC index in month m
+            fic *= 1 + fic_ret[m]  # realized return of the FIC index in month m
             fic += sum(lot_value(lot, m) for lot in lots if lot["maturity_month"] == m)
             lots = [lot for lot in lots if lot["maturity_month"] != m]
-            payment = payments_uvr.get(m, 0.0) * row["uvr_cop"]
+            payment = payments_uvr[m] * uvr[m]
             shortfall = max(payment - fic, 0.0)
             fic -= payment - shortfall
             etf_total = sum(units[n] * prices[n] for n in names)
@@ -296,7 +301,7 @@ def run_backtest(
         floor = funding = np.nan
         if m in reviews:
             free_cop = fic + sum(units[n] * prices[n] for n in names)
-            history = panel.loc[: month_to_period(bt["t0"], m)]  # only data known at the review
+            history = panel.loc[: periods[m]]  # only data known at the review
             alloc = allocate(m, history, free_cop, lots, payment_schedule, cfg)
             fic, floor = alloc.fic_cop, alloc.floor_cop
             funding = total_funding_ratio(free_cop, sum(lot_value(lot, m) for lot in lots), floor)
@@ -309,8 +314,8 @@ def run_backtest(
         rows.append(
             {
                 "month": m,
-                "period": str(month_to_period(bt["t0"], m)),
-                "uvr_cop": row["uvr_cop"],
+                "period": str(periods[m]),
+                "uvr_cop": uvr[m],
                 "payment_cop": payment,
                 "shortfall_cop": shortfall,
                 "etf_sold_cop": etf_sold,
