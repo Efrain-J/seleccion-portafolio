@@ -141,26 +141,32 @@ model is in the `inflation_model` section of `config/assumptions.yaml`. The fore
 implied inflation (COP against UVR curves) for the next `horizon_months`, corrected with the bias, the seasonality and
 the missing dispersion of the months already realized (the realized inflation comes from the UVR).
 
-Run every plan with that forecast instead of the trailing UVR inflation (`inflation_scenarios.source: forecast`):
+Run every plan with those scenarios instead of the trailing UVR inflation (`inflation_scenarios.source: forecast`):
 
 ```
-.venv\Scripts\python -m uvr_loan.forecast_runs
+.venv\Scripts\python -m uvr_loan.forecast_runs [base|high|low]
 ```
 
-`data/forecasts/hw_inflation_forecasts.csv` has, for the close of each month, the median (`median_ea`) and the 99.5th
-percentile (`p995_ea`) of the 6-month inflation forecast (effective annual, decimal), made only with information up to
-that close. The base inflation of the scenarios is replaced by one of them (`forecast_stat`); high and low still add
-+3 pp and -1.5 pp. The runner starts in May 2016 (the panel is complete from then on) and runs three cases: `trailing`
-(baseline), `median` and `p995`. It writes `results/forecast_runs/<case>/` (`backtest_<plan>.csv`, `summary.csv`,
-`base_inflation.csv`: the base used at each review next to the realized UVR inflation of the next 6 months) and
-`results/forecast_runs/comparison.csv` (one row per plan and case). The forecast is used as a constant annual
-inflation for the whole remaining horizon, like the trailing base; the p99.5 case is a stress test.
+`data/forecasts/hw_inflation_forecasts.csv` has, for the close of each month, the 5th percentile (`p05_ea`), the median
+(`median_ea`) and the 99.5th percentile (`p995_ea`) of the 6-month inflation forecast (effective annual, decimal), made
+only with information up to that close. With `source: forecast` the scenarios are those three columns
+(`inflation_scenarios.forecast_columns`): **low = p05, base = median, high = p99.5**, with no fixed shocks. With
+`source: trailing` (the default) the base is the trailing UVR inflation and high and low add `high_shock_pp` and
+`low_shock_pp`.
+
+The runner starts in May 2016 (the panel is complete from then on) and runs two cases: `trailing` (baseline) and
+`forecast`. The optional argument is the scenario every plan decides with (default: the config, `high`, which is the
+p99.5 in the `forecast` case; `base` is the median). It writes `results/forecast_runs[_<scenario>]/<case>/`
+(`backtest_<plan>.csv`, `summary.csv`, `base_inflation.csv`: low, base and high at each review next to the realized UVR
+inflation of the next 6 months) and `comparison.csv` (one row per plan and case). Each scenario is used as a constant
+annual inflation for the whole remaining horizon, like the trailing base.
 
 The notebook `notebooks/backtest_plans.ipynb` plots the wealth and the FIC liquidity of every plan and the real versus
-projected UVR. To plot a run of `forecast_runs` instead of `results/`, set `UVR_CASE` (`trailing`, `median`, `p995`)
-and optionally `UVR_DECISION` (`base`, `high`, `low`) before running it, e.g.
-`UVR_CASE=p995 UVR_DECISION=base jupyter nbconvert --to notebook --execute notebooks/backtest_plans.ipynb --output backtest_plans_base_p995.ipynb`
-(`notebooks/backtest_plans_base_p995.ipynb` is that executed notebook; the stress test is not recomputed for these runs).
+projected UVR. To plot a run of `forecast_runs` instead of `results/`, set `UVR_CASE` (`trailing` or `forecast`) and
+optionally `UVR_DECISION` (`base`, `high`, `low`) before running it, e.g.
+`UVR_CASE=forecast UVR_DECISION=base jupyter nbconvert --to notebook --execute notebooks/backtest_plans.ipynb --output backtest_plans_forecast_base.ipynb`
+(`notebooks/backtest_plans_forecast_base.ipynb` is that executed notebook, with the UVR projected under the three
+scenarios; the stress test is not recomputed for these runs).
 
 ## Architecture
 
@@ -175,7 +181,7 @@ Current structure. Planned additions (diagnosis, stress tests, report figures) a
 ├── data/
 │   ├── SOURCES.md            # Where every series comes from (versioned)
 │   ├── raw/                  # Download cache (UVR, CDT rates, TRM, ETFs, FIC reports) and the hand-downloaded betas
-│   ├── forecasts/            # hw_inflation_forecasts.csv: median and p99.5 of the 6-month inflation (versioned)
+│   ├── forecasts/            # hw_inflation_forecasts.csv: p05, median and p99.5 of the 6-month inflation (versioned)
 │   └── processed/            # monthly_panel.csv and payment_schedule_uvr.csv
 ├── notebooks/
 │   └── backtest_plans.ipynb  # Wealth, liquidity and UVR charts of every plan
@@ -192,7 +198,7 @@ Current structure. Planned additions (diagnosis, stress tests, report figures) a
 │   │   ├── hull_white.py     # The simulation (time-dependent kappa and sigma)
 │   │   ├── cpi.py            # Monthly CPI from the UVR, seasonal factors, realized inflation
 │   │   └── forecast.py       # Bias/seasonality correction and the forecast file (python -m ...)
-│   ├── forecast_runs.py      # Every plan with the trailing / median / p99.5 inflation base
+│   ├── forecast_runs.py      # Every plan with the trailing or the forecast (p05 / median / p99.5) scenarios
 │   ├── cashflows.py          # Review months and loan payments converted from UVR to COP
 │   ├── portfolio.py          # Plan 1 rule, plan 2 LP (ladder_purchases), plan 3 floor and ETF weights
 │   ├── backtest.py           # Monthly simulation of every plan (PLANS) and summary metrics

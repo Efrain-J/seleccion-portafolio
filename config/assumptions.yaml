@@ -19,12 +19,15 @@ backtest:
   review_sensitivity_months: [3, 6, 12]
 
 inflation_scenarios:
-  source: trailing             # trailing: base = trailing UVR inflation; forecast: base from the forecast file
+  source: trailing             # trailing: base = trailing UVR inflation, high/low = base + shock; forecast: the three come from the forecast file
   base_lookback_months: 6      # S14: base = annualized UVR inflation of the last 6 months (placeholder model)
+  high_shock_pp: 3.0           # trailing source only: high = base + 3 pp
+  low_shock_pp: -1.5           # trailing source only: low = base - 1.5 pp
   forecast_file: data/forecasts/hw_inflation_forecasts.csv   # one row per decision month, made with information up to its close
-  forecast_stat: median_ea     # column of the file used as base: median_ea or p995_ea
-  high_shock_pp: 3.0           # high = base + 3 pp
-  low_shock_pp: -1.5           # low = base - 1.5 pp
+  forecast_columns:            # forecast source only: column of the forecast file that is each scenario
+    low: p05_ea                # 5th percentile of the 6-month inflation forecast
+    base: median_ea
+    high: p995_ea              # 99.5th percentile
 
 conservative:                  # Plan 1: FIC (liquidity + a share of the rest) + CDT; no ETF
   cdt_weight: 0.90             # share of the money left after the liquidity that goes to the CDT (the rest stays in the FIC)

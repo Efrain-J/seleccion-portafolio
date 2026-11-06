@@ -1,4 +1,4 @@
-"""Forecast of the inflation of the next `horizon_months` months (median and p99.5) for every month-end.
+"""Forecast of the inflation of the next `horizon_months` months (p05, median and p99.5) for every month-end.
 
 For each origin month, using only what is known at its close:
 
@@ -33,9 +33,10 @@ from uvr_loan.inflation_model.nelson_siegel import implied_inflation, load_betas
 
 STEPS_PER_YEAR = 12  # monthly steps: the CPI is monthly
 SIMULATED_YEARS = 1  # enough to cover the forecast horizon
-FORECAST_PERCENTILE = 0.995  # the `p995_ea` column
+LOW_PERCENTILE = 0.05  # the `p05_ea` column
+HIGH_PERCENTILE = 0.995  # the `p995_ea` column
 HISTORY_COLUMNS = ["realised", "breakeven_1y", "hw_mean", "seasonal"]
-OUTPUT_COLUMNS = ["median_ea", "p995_ea", "mean_ea", "breakeven_1y_ea"]
+OUTPUT_COLUMNS = ["p05_ea", "median_ea", "p995_ea", "mean_ea", "breakeven_1y_ea"]
 
 
 def sample_at_horizon(simulation: dict[str, Any], horizon_months: int) -> pd.Series:
@@ -140,8 +141,9 @@ def generate_forecasts(
             continue
         sample = corrected_distribution(history, samples[origin], origin, cfg)
         rows[str(origin)] = {
+            "p05_ea": np.expm1(np.quantile(sample, LOW_PERCENTILE)),
             "median_ea": np.expm1(np.median(sample)),
-            "p995_ea": np.expm1(np.quantile(sample, FORECAST_PERCENTILE)),
+            "p995_ea": np.expm1(np.quantile(sample, HIGH_PERCENTILE)),
             "mean_ea": np.expm1(sample.mean()),
             "breakeven_1y_ea": history.loc[origin, "breakeven_1y"],
         }

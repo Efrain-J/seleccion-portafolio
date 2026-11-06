@@ -1,12 +1,14 @@
-"""Backtest of every plan with three inflation bases: trailing UVR, forecast median and forecast p99.5.
+"""Backtest of every plan with two sources of inflation scenarios: trailing UVR and the forecast model.
 
-The forecast file (`inflation_scenarios.forecast_file`) has the 6-month inflation distribution of the
-best model of the hull_white project at the close of every month. The base inflation of the scenarios is
-replaced by one of its statistics; high and low keep their shocks. The runs start in `T0` (May 2016) because
-the panel is complete from then on: the FIC returns start in Feb 2016 and the ICOLCAP volatility needs 36
-months of returns since its listing in May 2013.
+- `trailing`: the base is the inflation of the last months of the UVR; high and low add fixed shocks.
+- `forecast`: low, base and high are the 5th percentile, the median and the 99.5th percentile of the 6-month inflation
+  forecast of `uvr_loan.inflation_model` (`inflation_scenarios.forecast_columns`); there are no shocks.
 
-Run `python -m uvr_loan.forecast_runs` to write the results to results/forecast_runs/.
+The runs start in `T0` (May 2016) because the panel is complete from then on: the FIC returns start in Feb 2016
+and the ICOLCAP volatility needs 36 months of returns since its listing in May 2013.
+
+Run `python -m uvr_loan.forecast_runs [base|high|low]` to write the results to results/forecast_runs[_<scenario>]/;
+the argument is the scenario every plan decides with (default: the one in the config, `high`).
 """
 
 import copy
@@ -34,8 +36,7 @@ def output_dir(decision_scenario: str | None = None) -> Path:
 # Overrides of `inflation_scenarios` for each case.
 CASES: dict[str, dict[str, str]] = {
     "trailing": {"source": "trailing"},
-    "median": {"source": "forecast", "forecast_stat": "median_ea"},
-    "p995": {"source": "forecast", "forecast_stat": "p995_ea"},
+    "forecast": {"source": "forecast"},
 }
 
 
@@ -84,14 +85,18 @@ def pad_uvr_history(panel: pd.DataFrame, uvr: pd.Series, months: int = 12) -> pd
 
 
 def base_inflation_log(panel: pd.DataFrame, cfg: dict[str, Any]) -> pd.DataFrame:
-    """Base inflation used at each review next to the UVR inflation realized in the following 6 months (annual)."""
+    """Low, base and high inflation at each review next to the UVR inflation realized in the next 6 months (annual)."""
     bt, uvr = cfg["backtest"], panel["uvr_cop"]
     rows = {}
     for m in decision_months(bt):
         month = month_to_period(bt["t0"], m)
         later = month + 6
         realised = (uvr[later] / uvr[month]) ** 2 - 1 if later in uvr.index else np.nan
-        rows[str(month)] = {"base": scenarios(cfg, uvr.loc[:month])["base"], "realised_next_6m": realised}
+        known = scenarios(cfg, uvr.loc[:month])
+        rows[str(month)] = {
+            **{name: known[name] for name in ("low", "base", "high")},
+            "realised_next_6m": realised,
+        }
     return pd.DataFrame.from_dict(rows, orient="index")
 
 
@@ -157,8 +162,8 @@ if __name__ == "__main__":
         "max_drawdown",
     ]
     print(table[shown].to_string(float_format=lambda x: f"{x:,.4f}"))
-    base = pd.DataFrame({case: v["log"]["base"] for case, v in out.items()})
-    base["realised_next_6m"] = out["trailing"]["log"]["realised_next_6m"]
-    print("\nBase inflation at each review (annual) and the realized UVR inflation of the next 6 months:")
-    print(base.to_string(float_format=lambda x: f"{x:.4f}"))
+    log = pd.concat({case: v["log"].drop(columns="realised_next_6m") for case, v in out.items()}, axis=1)
+    log["realised_next_6m"] = out["trailing"]["log"]["realised_next_6m"]
+    print("\nScenarios at each review (annual) and the realized UVR inflation of the next 6 months:")
+    print(log.to_string(float_format=lambda x: f"{x:.4f}"))
     print(f"Written to {OUT_DIR}")

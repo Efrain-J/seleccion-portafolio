@@ -95,14 +95,15 @@ def test_corrected_distribution_needs_enough_history():
 
 
 def test_forecast_columns_and_months(forecasts):
-    assert list(forecasts.columns) == ["median_ea", "p995_ea", "mean_ea", "breakeven_1y_ea"]
+    assert list(forecasts.columns) == ["p05_ea", "median_ea", "p995_ea", "mean_ea", "breakeven_1y_ea"]
     assert forecasts.index.name == "month"
     assert list(forecasts.index) == [str(p) for p in ORIGINS if p >= FIRST_FORECAST]
 
 
-def test_forecast_p995_is_above_the_median_and_values_are_finite(forecasts):
+def test_forecast_percentiles_are_ordered_and_values_are_finite(forecasts):
     assert np.isfinite(forecasts.to_numpy()).all()
-    assert (forecasts["p995_ea"] > forecasts["median_ea"]).all()
+    assert (forecasts["p05_ea"] < forecasts["median_ea"]).all()
+    assert (forecasts["median_ea"] < forecasts["p995_ea"]).all()
 
 
 def test_forecasts_do_not_look_ahead(forecasts):
