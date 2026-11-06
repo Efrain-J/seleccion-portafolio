@@ -56,7 +56,7 @@ Every step has a command registered in `pyproject.toml`, so `uv run <command>` i
 | `uvr-panel` | `uvr_loan.data.cleaning` |
 | `uvr-portfolio` | `uvr_loan.portfolio` |
 | `uvr-backtest` | `uvr_loan.backtest` |
-| `uvr-stress` | `uvr_loan.stress` |
+| `uvr-synthetic` | `uvr_loan.synthetic` |
 
 Generate the loan payment schedule in UVR (month by month: balance, interest, installment, prepayment and total
 payment):
@@ -123,10 +123,10 @@ Run the dynamic backtest of every plan from t0 to the end of the horizon (review
 uv run python -m uvr_loan.backtest
 ```
 
-It writes `results/backtest_<plan>.csv` for each plan (one row per month: `uvr_cop`, `payment_cop`, `shortfall_cop`,
+It writes `results/backtest/<plan>.csv` for each plan (one row per month: `uvr_cop`, `payment_cop`, `shortfall_cop`,
 `etf_sold_cop`, `fic_cop`, `cdt_cop`, `etf_cop` (all ETFs) and `<name>_cop` (each ETF), `wealth_cop`, `is_review`,
 `floor_cop` and `funding_ratio_total` (plan 3, at reviews: (free money + live CDTs) / (floor + live CDTs)),
-`wealth_net_cop`) and `results/summary.csv` with one column per plan (months with shortfall, total shortfall, minimum
+`wealth_net_cop`) and `results/backtest/summary.csv` with one column per plan (months with shortfall, total shortfall, minimum
 liquidity (FIC + ETF) in a payment month, ETF sold to pay, final wealth, final net wealth, annualized time-weighted
 return and volatility, maximum drawdown). When
 several ETFs must cover a payment, each one is sold in proportion to its value. The
@@ -135,11 +135,13 @@ FIC + ETF: a payment is
 taken from the FIC first and then from ETF units sold at that month's price; only what both cannot cover is recorded
 as shortfall. CDTs are never redeemed early.
 
-Run the stress test (plans 2, 3 and 4 when only the ETF prices change: −50 % and −80 % in 10 years, and a 60 % fall
-in nov-2019 with no recovery); it writes `results/stress_summary.csv`:
+Run the synthetic ETF scenarios (plans 2, 3 and 4 when the ETF prices follow made-up paths from t0: both down,
+flat but volatile, one up and one down, a 40 % crash with recovery, and a sine; see `synthetic_etfs` in the config).
+It writes `results/synthetic/summary.csv`, `results/synthetic/prices.csv` and one
+`results/synthetic/<scenario>/<plan>.csv` per run; `notebooks/synthetic_etf_scenarios.ipynb` plots them:
 
 ```
-uv run python -m uvr_loan.stress
+uv run python -m uvr_loan.synthetic
 ```
 
 Generate the inflation forecast (Hull-White model in `src/uvr_loan/inflation_model/`):
@@ -182,11 +184,11 @@ projected UVR. To plot a run of `forecast_runs` instead of `results/`, set `UVR_
 optionally `UVR_DECISION` (`base`, `high`, `low`) before running it, e.g.
 `UVR_CASE=forecast UVR_DECISION=base jupyter nbconvert --to notebook --execute notebooks/backtest_plans.ipynb --output backtest_plans_forecast_base.ipynb`
 (`notebooks/backtest_plans_forecast_base.ipynb` is that executed notebook, with the UVR projected under the three
-scenarios; the stress test is not recomputed for these runs).
+scenarios).
 
 ## Architecture
 
-Current structure. Planned additions (diagnosis, stress tests, report figures) are listed in the project plan.
+Current structure. Planned additions (diagnosis, report figures) are listed in the project plan.
 
 ```
 .
@@ -200,7 +202,8 @@ Current structure. Planned additions (diagnosis, stress tests, report figures) a
 │   ├── forecasts/            # hw_inflation_forecasts.csv: p05, median and p99.5 of the 6-month inflation (versioned)
 │   └── processed/            # monthly_panel.csv and payment_schedule_uvr.csv
 ├── notebooks/
-│   └── backtest_plans.ipynb  # Wealth, liquidity and UVR charts of every plan
+│   ├── backtest_plans.ipynb  # Wealth, liquidity and UVR charts of every plan
+│   └── synthetic_etf_scenarios.ipynb  # Plans 3 and 4 under the synthetic ETF scenarios
 ├── pyproject.toml            # Package metadata and dependencies (numpy, pandas, scipy, ...)
 ├── src/uvr_loan/
 │   ├── config.py             # Loads assumptions.yaml
@@ -218,7 +221,9 @@ Current structure. Planned additions (diagnosis, stress tests, report figures) a
 │   ├── cashflows.py          # Review months and loan payments converted from UVR to COP
 │   ├── portfolio.py          # Plan 1 rule, plan 2 LP (ladder_purchases), plan 3 floor and ETF weights
 │   ├── backtest.py           # Monthly simulation of every plan (PLANS) and summary metrics
-│   └── stress.py             # Stress test: plans 2-4 when the ETF prices fall
-├── results/                  # Backtest outputs (CSV)
+│   └── synthetic.py          # Synthetic ETF scenarios (Brownian motion + drift, crash, sine)
+├── results/                  # Outputs (CSV), one folder per script
+│   ├── backtest/             # <plan>.csv and summary.csv (uvr_loan.backtest)
+│   └── synthetic/            # summary.csv, prices.csv and <scenario>/<plan>.csv (uvr_loan.synthetic)
 └── tests/                    # pytest suite
 ```

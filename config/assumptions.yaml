@@ -83,3 +83,23 @@ inflation_model:               # Hull-White forecast of the 6-month inflation (u
   min_history: 12              # realized errors needed before an origin can be forecast
   first_origin: "2013-06"      # first month with enough betas for the rolling window and the error history
   first_forecast: "2016-01"    # first month written to the forecast file
+
+synthetic_etfs:                # Made-up ETF paths from t0 (python -m uvr_loan.synthetic); rates, UVR, FIC and payments stay historical
+  seed: 42                     # the same noise draws in every scenario; each ETF has its own
+  sigma_ea: 0.15               # default annual volatility of the Brownian noise; a scenario can override it per ETF
+  scenarios:                   # per ETF: drift_ea (annual log drift), and optionally sigma_ea, amplitude + period_months (sine), crash_month + crash_fall
+    both_down:
+      icolcap: {drift_ea: -0.15}
+      cspx: {drift_ea: -0.15}
+    flat_volatile:
+      icolcap: {drift_ea: 0.0, sigma_ea: 0.40}
+      cspx: {drift_ea: 0.0, sigma_ea: 0.40}
+    diverge:
+      icolcap: {drift_ea: 0.15}
+      cspx: {drift_ea: -0.15}
+    crash:                     # 40 % fall in month 37 (the month after the review of month 36), then the same drift
+      icolcap: {drift_ea: 0.10, crash_month: 37, crash_fall: 0.40}
+      cspx: {drift_ea: 0.10, crash_month: 37, crash_fall: 0.40}
+    sine:                      # log price +- 0.25 around the start, one cycle every 4 years
+      icolcap: {drift_ea: 0.0, sigma_ea: 0.10, amplitude: 0.25, period_months: 48}
+      cspx: {drift_ea: 0.0, sigma_ea: 0.10, amplitude: 0.25, period_months: 48}
