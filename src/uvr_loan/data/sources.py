@@ -131,6 +131,12 @@ def load_raw(cfg: dict[str, Any]) -> dict[str, pd.Series]:
     }
 
 
+def load_uvr(cfg: dict[str, Any]) -> pd.Series:
+    """Daily UVR (COP per UVR) from its own cache file; unlike `load_raw`, no other series is requested."""
+    series_id = cfg["data"]["uvr_series"]
+    return cached(RAW_DIR / f"banrep_{series_id}.csv", partial(fetch_banrep_series, series_id))
+
+
 def load_etf_prices(cfg: dict[str, Any]) -> dict[str, pd.Series]:
     """Daily adjusted close of every ETF in `data.etfs` (in its own currency), from `data.etf_history_start`.
 

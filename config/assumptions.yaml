@@ -65,3 +65,18 @@ ldi:                           # Plan 3: CDT ladder up to the floor (x 1.05), ET
 
 trend_ldi:                     # Plan 4: plan 3 with a trend filter on the ETFs (same floor, ladder and ETFs: ldi.*)
   min_trailing_return: 0.0     # an ETF whose return of the last data.trend_window_months months is below this gets no money; its share stays in the FIC
+
+inflation_model:               # Hull-White forecast of the 6-month inflation (uvr_loan.inflation_model); writes inflation_scenarios.forecast_file
+  betas_file: data/raw/betas_historicos.csv   # Nelson-Siegel betas of the Banco de la República, downloaded by hand (data/SOURCES.md)
+  betas_start: "2010-01-01"    # betas before this date are ignored
+  tenors: 36                   # annual nodes (1 .. tenors) of the COP and UVR curves
+  vol_window_days: 365         # observations (calendar days) of the rolling std of each node's level
+  vol_percentile: 0.995        # sigma of each node = this percentile of its rolling std
+  kappas: [0.11, 0.13]         # mean reversion before and after kappa_switch_years
+  kappa_switch_years: 5        # also the number of sigma nodes used (see the quirks in inflation_model/hull_white.py)
+  n_paths: 10000               # simulated paths per origin; the p99.5 needs a well resolved tail
+  seed: 123456
+  horizon_months: 6            # inflation forecast: the sample tenor, the realized lag (+ UVR lag) and the seasonal window derive from it
+  min_history: 12              # realized errors needed before an origin can be forecast
+  first_origin: "2013-06"      # first month with enough betas for the rolling window and the error history
+  first_forecast: "2016-01"    # first month written to the forecast file

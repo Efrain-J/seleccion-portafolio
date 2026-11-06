@@ -19,7 +19,19 @@ from uvr_loan.data.sources import (
     fetch_money_market_fic,
     fetch_socrata,
     fetch_yahoo_close,
+    load_uvr,
 )
+
+
+def test_load_uvr_reads_only_the_uvr_cache(monkeypatch, tmp_path):
+    """The UVR comes from its own cache file; the other series (CDT, TRM) are never requested."""
+    dates = pd.DatetimeIndex(["2020-01-01", "2020-01-02"], name="date")
+    s = pd.Series([270.0, 271.0], dates, name="value")
+    s.to_csv(tmp_path / "banrep_850.csv")
+    monkeypatch.setattr(sources, "RAW_DIR", tmp_path)
+    monkeypatch.setattr(sources, "fetch_banrep_series", Mock(side_effect=AssertionError("no download expected")))
+    result = load_uvr({"data": {"uvr_series": 850}})
+    pd.testing.assert_series_equal(result, s, check_freq=False)
 
 
 def test_to_month_end_takes_last_value():
