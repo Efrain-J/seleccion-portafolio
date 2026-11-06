@@ -29,7 +29,9 @@ def test_load_uvr_reads_only_the_uvr_cache(monkeypatch, tmp_path):
     s = pd.Series([270.0, 271.0], dates, name="value")
     s.to_csv(tmp_path / "banrep_850.csv")
     monkeypatch.setattr(sources, "RAW_DIR", tmp_path)
-    monkeypatch.setattr(sources, "fetch_banrep_series", Mock(side_effect=AssertionError("no download expected")))
+    monkeypatch.setattr(
+        sources, "fetch_banrep_series", Mock(side_effect=AssertionError("no download expected"))
+    )
     result = load_uvr({"data": {"uvr_series": 850}})
     pd.testing.assert_series_equal(result, s, check_freq=False)
 
