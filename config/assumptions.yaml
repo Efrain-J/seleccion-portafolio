@@ -20,7 +20,7 @@ backtest:
 
 inflation_scenarios:
   source: trailing             # trailing: base = trailing UVR inflation, high/low = base + shock; forecast: the three come from the forecast file
-  base_lookback_months: 6      # S14: base = annualized UVR inflation of the last 6 months (placeholder model)
+  base_lookback_months: 6      # S14, trailing source only: base = annualized UVR inflation of the last 6 months (provisional)
   high_shock_pp: 3.0           # trailing source only: high = base + 3 pp
   low_shock_pp: -1.5           # trailing source only: low = base - 1.5 pp
   forecast_file: data/forecasts/hw_inflation_forecasts.csv   # one row per decision month, made with information up to its close

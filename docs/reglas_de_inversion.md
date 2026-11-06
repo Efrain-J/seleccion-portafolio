@@ -54,7 +54,7 @@ $\text{UVR}_\tau$ al ejecutarlas.
 | $\tau$ | Mes de una revisión: $0, k, 2k, \dots, H - k$ | meses | función `decision_months` |
 | $P_m$ | Pago total del mes $m$ (cuota + abono), de la tabla de amortización | UVR | columna `total_payment_uvr` |
 | $\text{UVR}_m$ | Valor observado de la UVR al cierre del mes $m$ | COP por UVR | columna `uvr_cop` |
-| $\pi^{\text{base}}_\tau$ | Inflación base en $\tau$: la de los últimos 6 meses, anualizada (S14) | decimal E.A. | función `trailing_inflation` |
+| $\pi^{\text{base}}_\tau$ | Inflación base en $\tau$: la de los últimos 6 meses, anualizada (S14); con `source: forecast`, la mediana del pronóstico | decimal E.A. | funciones `trailing_inflation`, `scenarios` |
 | $\pi_\tau$ | Inflación con la que deciden los planes en $\tau$ (ver abajo) | decimal E.A. | función `scenarios` |
 | $\widehat{\text{UVR}}_{m\mid\tau}$ | UVR proyectada en $\tau$ para el mes $m > \tau$ | COP por UVR | función `project_uvr` |
 | $r^{\text{FIC}}_m$ | Rentabilidad **realizada** del FIC durante el mes $m$ (índice de FIC de mercado monetario) | decimal mensual | columna `fic_ret_m` |
@@ -79,11 +79,16 @@ $$
 En $\pi^{\text{base}}_\tau$, el 6 es `inflation_scenarios.base_lookback_months` (no $k$) y el exponente $12/6$ anualiza
 la inflación de esos 6 meses; en $\tau = 0$ usa la UVR de abr-2016, anterior a $t_0$.
 
-**Escenario de inflación de los planes.** Los planes deciden con
-$\pi_\tau = \pi^{\text{alto}}_\tau = \pi^{\text{base}}_\tau + 0{,}03$: es el margen para el riesgo de que la inflación
-supere lo esperado. Todos usan el mismo, para que sus resultados se puedan comparar. La base es la referencia del
-escenario alto; el código también calcula un escenario bajo ($\pi^{\text{base}}_\tau - 0{,}015$), que ningún plan
-usa.
+**Escenario de inflación de los planes.** Los planes deciden con $\pi_\tau = \pi^{\text{alto}}_\tau$, el escenario alto.
+Todos usan el mismo, para que sus resultados se puedan comparar. El código también calcula un escenario bajo, que
+ningún plan usa. Los tres escenarios dependen de `inflation_scenarios.source`:
+
+- **`trailing` (por defecto):** $\pi^{\text{alto}}_\tau = \pi^{\text{base}}_\tau + 0{,}03$, el margen para el riesgo de que la
+  inflación supere lo esperado, y $\pi^{\text{bajo}}_\tau = \pi^{\text{base}}_\tau - 0{,}015$ (`high_shock_pp`,
+  `low_shock_pp`).
+- **`forecast`:** salen del pronóstico de inflación a 6 meses del modelo Hull-White (ver «Datos y supuestos de mercado»),
+  sin choques fijos: $\pi^{\text{bajo}}_\tau$ es su percentil 5, $\pi^{\text{base}}_\tau$ su mediana y
+  $\pi^{\text{alto}}_\tau$ su percentil 99,5 (`inflation_scenarios.forecast_columns`).
 
 | Plan | $\pi_\tau$ | Para qué | YAML |
 |---|---|---|---|
@@ -132,12 +137,21 @@ $$
 
 ### Datos y supuestos de mercado
 
-- **Inflación proyectada (S14):** la base es la inflación de los últimos 6 meses medida con la UVR
-  ($\pi^{\text{base}}_\tau$). Es un modelo provisional hasta que exista el modelo de inflación (`scenarios` en
-  `src/uvr_loan/inflation.py`). Con `inflation_scenarios.source: forecast` la base sale del pronóstico del modelo
-  Hull-White (`src/uvr_loan/inflation_model/`) en lugar de esa inflación reciente: la base es la mediana del
-  pronóstico, y los escenarios bajo y alto son sus percentiles 5 y 99,5 (`forecast_columns`), sin choques fijos. Con 6 meses la base tiene estacionalidad: en abril ve los meses de inflación alta de
+- **Inflación proyectada, fuente por defecto (S14):** la base es la inflación de los últimos 6 meses medida con la UVR
+  ($\pi^{\text{base}}_\tau$), con alto = base + 3 p.p. y bajo = base − 1,5 p.p. Es un modelo provisional (`scenarios` en
+  `src/uvr_loan/inflation.py`). Con 6 meses esa base tiene estacionalidad: en abril ve los meses de inflación alta de
   comienzo de año y en octubre los de inflación baja.
+- **Inflación proyectada, pronóstico Hull-White (`inflation_scenarios.source: forecast`, explicado en
+  [`modelo_inflacion.md`](modelo_inflacion.md)):** el modelo de
+  `src/uvr_loan/inflation_model/` simula la inflación implícita entre los TES en pesos y los TES en UVR (curvas
+  Nelson-Siegel del Banco de la República) y pronostica la inflación de los próximos 6 meses al cierre de cada mes. La
+  muestra simulada se corrige con lo que el modelo erró en los meses ya realizados (sesgo, estacionalidad y la
+  dispersión que le falta); la inflación realizada sale de la UVR. El resultado es
+  `data/forecasts/hw_inflation_forecasts.csv`: una fila por mes con los percentiles 5 y 99,5, la mediana, el promedio y
+  la inflación implícita a 1 año, solo con información hasta ese cierre. Las columnas que son cada escenario están en
+  `inflation_scenarios.forecast_columns`. Se regenera con `python -m uvr_loan.inflation_model.forecast` (necesita las betas
+  de `data/raw/`, ver `data/SOURCES.md`). Cada escenario se usa como una inflación anual constante durante todo el
+  plazo que falta, igual que la base por defecto; no es un pronóstico a 10 años.
 - **FIC:** rinde lo que rindió un índice de los FIC de mercado monetario reales: el valor de la unidad de cada fondo,
   publicado a diario por la Superfinanciera, promediado según el tamaño de cada fondo. Ver `data/SOURCES.md`.
 - **Venta inmediata, sin deslizamiento (S16):** cualquier ETF se vende al precio de cierre del mes en que se necesita
@@ -398,7 +412,8 @@ vivos.
 
 ### Validación del pronóstico de la caja
 
-Evaluado contra lo que pasó en los 6 meses siguientes a cada revisión (error = pronóstico − realizado):
+Evaluado contra lo que pasó en los 6 meses siguientes a cada revisión (error = pronóstico − realizado; corrida por
+defecto, con la inflación reciente):
 
 - acierta en 17 de 20 revisiones cuál rinde más, la caja o el CDT a 180 días. Falla en abr-2020 (prácticamente un
   empate) y en abr-2022 y oct-2022, cuando el BanRep subía tasas y el FIC, que sigue las tasas mes a mes, le ganó a

@@ -99,9 +99,12 @@ LP that covers every remaining payment under high inflation, gives the CDT ladde
 ICOLCAP and CSPX, split by inverse volatility (CPPI with multiplier 1: a fall of the ETFs never reaches the money for
 the payments). Plan 4 (`trend_ldi`) is plan 3 with a trend filter: an ETF whose return over the last
 `data.trend_window_months` (12) months is negative at a review gets no money, and its share stays in the FIC.
-Every reported peso comes from observed data. The base inflation of the
-scenarios is the UVR inflation of the last `base_lookback_months` months known at each review. The full rules, with
-notation, examples and simplifications, are in [`docs/reglas_de_inversion.md`](docs/reglas_de_inversion.md).
+Every reported peso comes from observed data. The inflation scenarios of the plans come from
+`inflation_scenarios.source`: by default (`trailing`) the base is the UVR inflation of the last
+`base_lookback_months` months known at each review, and high and low add `high_shock_pp` and `low_shock_pp`; with
+`forecast`, low, base and high are the 5th percentile, the median and the 99.5th percentile of the Hull-White
+inflation forecast (see below). The full rules, with notation, examples and simplifications, are in
+[`docs/reglas_de_inversion.md`](docs/reglas_de_inversion.md).
 
 Run the dynamic backtest of every plan from t0 to the end of the horizon (reviews every `review_every_months` months):
 
@@ -139,7 +142,9 @@ It needs the Nelson-Siegel betas of the Banco de la República in `data/raw/beta
 (`data/forecasts/hw_inflation_forecasts.csv`; the committed file is what it produces today), and every parameter of the
 model is in the `inflation_model` section of `config/assumptions.yaml`. The forecast of each month is the Hull-White simulation of the
 implied inflation (COP against UVR curves) for the next `horizon_months`, corrected with the bias, the seasonality and
-the missing dispersion of the months already realized (the realized inflation comes from the UVR).
+the missing dispersion of the months already realized (the realized inflation comes from the UVR). How it works, how it
+differs from the original Hull-White code and what each parameter means is in
+[`docs/modelo_inflacion.md`](docs/modelo_inflacion.md) (in Spanish).
 
 Run every plan with those scenarios instead of the trailing UVR inflation (`inflation_scenarios.source: forecast`):
 

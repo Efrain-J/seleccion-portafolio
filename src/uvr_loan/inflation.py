@@ -1,9 +1,11 @@
 """Inflation scenarios and projected UVR path.
 
 `scenarios` is the interface for the inflation model: it returns the annual
-inflation of each planning scenario at a decision date, using only the UVR known
-up to that date. For now the base is the inflation of the last
-`base_lookback_months` months; the real model must keep the same signature.
+inflation of each planning scenario (low, base, high) at a decision date, using only
+what is known up to that date. There are two sources (`inflation_scenarios.source`):
+the inflation of the last `base_lookback_months` months of the UVR plus fixed shocks
+(the default, a provisional model), and the forecast file written by
+`uvr_loan.inflation_model`, where each scenario is a column of the file.
 """
 
 from functools import cache

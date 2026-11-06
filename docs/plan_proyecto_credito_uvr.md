@@ -39,7 +39,7 @@
 | S11 | ~~CDT IPC+ con spread supuesto~~: **descartado**. No hay datos públicos de CDT IPC+ para 2016–2026 y el dinero reportado debe salir de datos reales. El plan 2 pasó a ser una escalera de CDT de tasa fija | ❌ Retirado |
 | S12 | **Orden dentro de un mes:** primero crecen los activos, luego vencen los CDT, luego se paga y, si es mes de revisión, se decide. Un CDT que vence en el mes m paga P_m; si el primer CDT vence en m*, la caja de hoy cubre los pagos τ+1 … m*−1, porque el CDT que vence en m* paga P_m* (en todos los planes: el plan 1 reserva τ+1 … τ+k−1; en los planes 2 y 3 lo hace el LP) | ✅ Definido |
 | S13 | **Dinero entre revisiones:** solo se compran CDT en las revisiones; lo que vence entre revisiones queda en el FIC hasta la siguiente | ✅ Definido |
-| S14 | **Inflación base provisional:** inflación de los últimos 6 meses medida con la UVR, conocida en cada revisión; alto = base + 3 p.p., bajo = base − 1,5 p.p. | ✅ Definido (provisional) |
+| S14 | **Inflación base y escenarios:** por defecto, inflación de los últimos 6 meses medida con la UVR, conocida en cada revisión; alto = base + 3 p.p., bajo = base − 1,5 p.p. Alternativa implementada (`inflation_scenarios.source: forecast`): pronóstico Hull-White a 6 meses con bajo / base / alto = percentil 5 / mediana / percentil 99,5, sin choques fijos | ✅ Definido (por defecto provisional) |
 | S15 | **Simplificación – pronóstico de la caja (plan 2):** el LP supone que el FIC rendirá en adelante lo mismo que el último mes, anualizado. Acierta en 17 de 20 revisiones si conviene más la caja o el CDT; falla cuando el BanRep sube tasas (2022). Error absoluto medio del rendimiento nominal del FIC: 1,29 p.p. | ✅ Definido |
 | S16 | **Venta inmediata, sin deslizamiento:** cualquier ETF se vende al precio de cierre del mes en que se necesita el dinero; para un ETF en dólares, la venta, la conversión y el traslado a Colombia ocurren en ese mismo mes | ✅ Definido |
 | S17 | **Conversión a la TRM:** valor en COP = unidades × precio en USD × TRM de cierre del mes (BanRep, serie 1), sin margen cambiario | ✅ Definido |
@@ -90,13 +90,14 @@
 - **Dos versiones del flujo de pagos:**
   - **Proyectado:** el que se estima en cada fecha de decisión con la información disponible en ese momento. Se usa para diseñar o rebalancear el portafolio.
   - **Realizado:** el que ocurrió con la UVR real. Se usa para evaluar si los pagos se cubrieron.
-- **Escenarios de planeación** (se construyen en cada fecha de decisión):
+- **Escenarios de planeación** (se construyen en cada fecha de decisión, S14):
   - **Base:** expectativas de BanRep (Encuesta de Expectativas) y/o un modelo estimado con los datos hasta esa fecha.
-  - **Alto:** base + choque (p. ej. +3 p.p.).
-  - **Bajo:** base − choque (p. ej. −1,5 p.p.).
+  - **Alto:** base + choque (p. ej. +3 p.p.), o el percentil 99,5 del pronóstico si la fuente es el modelo Hull-White.
+  - **Bajo:** base − choque (p. ej. −1,5 p.p.), o el percentil 5 del pronóstico si la fuente es el modelo Hull-White.
 - **Método de pronóstico de inflación** (elegir uno o combinar):
   - Encuesta de Expectativas de BanRep
-  - Inflación implícita (break-even) entre TES tasa fija y TES UVR
+  - Inflación implícita (break-even) entre TES tasa fija y TES UVR — implementado: modelo Hull-White sobre la inflación
+    implícita, corregido con el sesgo y la estacionalidad históricos (`src/uvr_loan/inflation_model/`)
   - Modelo AR(1) / reversión a la meta del 3 %, estimado con datos hasta la fecha de decisión
 
 ---
@@ -267,7 +268,7 @@ En cada fecha de revisión τ = 0, k, 2k, … meses (k = 6):
 
 - [x] 1. Tabla de amortización en UVR (gracia total y abonos)
 - [x] 2. Descarga y limpieza de datos históricos 2016–2026
-- [ ] 3. Método de pronóstico de inflación y escenarios de planeación — parcial: modelo provisional (S14), el modelo de los compañeros está pendiente
+- [ ] 3. Método de pronóstico de inflación y escenarios de planeación — parcial: modelo Hull-White implementado (`inflation_model`, `source: forecast`); falta decidir si pasa a ser la fuente por defecto en lugar de la inflación de los últimos 6 meses (S14)
 - [ ] 4. Diagnóstico en t₀: VP de los pagos vs. 760M, TIR requerida e indicador de cobertura
 - [ ] 5. Diseño del portafolio inicial (dedicado + excedente) — parcial: plan 3 con escalera de CDT; falta la cobertura con TES UVR
 - [ ] 6. Backtest del enfoque estático
@@ -282,7 +283,7 @@ En cada fecha de revisión τ = 0, k, 2k, … meses (k = 6):
 - [x] ~~Confirmar S5 (tratamiento del abono)~~: se mantienen el plazo y la cuota
 - [x] ~~Definir costos y comisiones (S6)~~: sin costos
 - [x] ~~Definir el día exacto de t₀ y la UVR inicial~~: cierre de oct-2016, UVR = 242,518 COP (último dato del mes en el panel)
-- [ ] Elegir el método de pronóstico de inflación (provisional: últimos 6 meses de la UVR, S14)
+- [ ] Elegir el método de pronóstico de inflación (por defecto, provisional: últimos 6 meses de la UVR, S14; disponible: pronóstico Hull-White con `source: forecast`)
 - [ ] Definir las bandas de tolerancia y las reglas de rebalanceo del enfoque dinámico
 - [x] ~~Elegir el índice de renta variable y si se incluyen activos internacionales~~: ICOLCAP y CSPX (S&P 500 irlandés, en COP con la TRM), sin cobertura cambiaria (S17–S19)
 
