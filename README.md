@@ -132,10 +132,15 @@ FIC + ETF: a payment is
 taken from the FIC first and then from ETF units sold at that month's price; only what both cannot cover is recorded
 as shortfall. CDTs are never redeemed early.
 
-Run the synthetic ETF scenarios (plans 2, 3 and 4 when the ETF prices follow made-up paths from t0: both down,
-flat but volatile, one up and one down, a 40 % crash with recovery, and a sine; see `synthetic_etfs` in the config).
-It writes `results/synthetic/summary.csv`, `results/synthetic/prices.csv` and one
-`results/synthetic/<scenario>/<plan>.csv` per run; `notebooks/synthetic_etf_scenarios.ipynb` plots them:
+Run the synthetic ETF scenarios (plans 2, 3 and 4 when the ETF prices follow made-up paths from t0, with UVR, CDT
+rates, FIC and payments kept historical; see `synthetic_etfs` in the config). There are 8 scenarios: both down, flat
+but volatile, one up and one down, a 40 % crash with recovery, a sine, and three where the ETFs rise on average.
+Each one has `n_paths` (2,000) random paths from one `seed`, so the same seed gives the same results; plans 3 and 4
+run on every path in parallel (about a minute). It writes `results/synthetic/summary.csv` (per scenario and plan:
+mean and percentiles of the final net wealth, drawdown, share of paths with a shortfall, share of paths that beat
+plan 3), `results/synthetic/fan.csv` (monthly percentiles of the net wealth), and for the example path 0
+`results/synthetic/prices.csv` and `results/synthetic/<scenario>/<plan>.csv`;
+`notebooks/synthetic_etf_scenarios.ipynb` plots them:
 
 ```
 uv run python -m uvr_loan.synthetic
