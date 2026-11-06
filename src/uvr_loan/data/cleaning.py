@@ -46,15 +46,14 @@ def check_complete(panel: pd.DataFrame) -> None:
 
 
 def etf_columns(
-    prices: dict[str, pd.Series], currencies: dict[str, str], trm: pd.Series, window: int, trend_window: int
+    prices: dict[str, pd.Series], currencies: dict[str, str], trm: pd.Series, window: int
 ) -> pd.DataFrame:
-    """Monthly `<name>_price_cop`, `<name>_vol_ea` and `<name>_trend_ret` of each ETF, indexed by monthly period.
+    """Monthly `<name>_price_cop` and `<name>_vol_ea` of each ETF, indexed by monthly period.
 
     `prices` are daily closes in each ETF's currency (COP or USD) and `trm` the daily COP per USD;
     both take their month-end value, so a USD price is converted with the TRM of the same month (S17).
     `<name>_vol_ea` is the standard deviation of the last `window` monthly returns in COP, times
-    sqrt(12), and `<name>_trend_ret` the return in COP of the last `trend_window` months: both only
-    use months up to their own, so they are known at the close of that month.
+    sqrt(12): it only uses months up to its own, so it is known at the close of that month.
     """
     trm_m = to_month_end(trm)
     columns = {}
@@ -66,7 +65,6 @@ def etf_columns(
             raise ValueError(f"Unsupported currency for {name}: {currencies[name]}")
         columns[f"{name}_price_cop"] = price_m
         columns[f"{name}_vol_ea"] = price_m.pct_change().rolling(window).std() * 12**0.5
-        columns[f"{name}_trend_ret"] = price_m.pct_change(trend_window)
     return pd.DataFrame(columns)
 
 
@@ -134,9 +132,7 @@ def load_monthly_panel(cfg: dict[str, Any]) -> pd.DataFrame:
     raw["fic_index"] = build_fic_index(load_fic_funds(cfg), data["fic_source"]["max_daily_change"])
     panel = build_monthly_panel(raw, data["cdt_series"], data["start"][:7], str(end))
     currencies = {name: etf["currency"] for name, etf in data["etfs"].items()}
-    etfs = etf_columns(
-        load_etf_prices(cfg), currencies, raw["trm_cop"], data["vol_window_months"], data["trend_window_months"]
-    )
+    etfs = etf_columns(load_etf_prices(cfg), currencies, raw["trm_cop"], data["vol_window_months"])
     panel = panel.join(fic_returns(panel["fic_index"])).join(etfs)
     # The FIC returns start one month after the panel and the volatilities need `data.vol_window_months`
     # of history (ICOLCAP starts in May 2013): the ETF prices are checked in every month, and every

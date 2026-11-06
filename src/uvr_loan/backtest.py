@@ -8,8 +8,12 @@ by the plan's strategy; live CDTs are held to maturity (S13). There can be sever
 entry of `data.etfs` in the config, priced with the panel column `<name>_price_cop`); when they
 must cover a payment, each one is sold in proportion to its value.
 
-Plan 4 (`trend_ldi`) is plan 3 with a trend filter: an ETF with a negative return over the last
-months gets no money at a review, and its share stays in the FIC.
+A strategy is called at each review as `strategy(tau, history, free_cop, lots, payment_schedule, cfg,
+state)` and returns an `Allocation`. `history` holds only the panel rows known at tau; `state` is a dict
+that lives for one run of `run_backtest`, for plans that remember something between reviews.
+
+Plan 4 (`ratchet_ldi`) is plan 3 with a ratchet (TIPP): it protects a share of the highest real
+surplus reached at a review, and puts in the ETFs a multiple of the money above that protected level.
 
 Run `python -m uvr_loan.backtest` to write the results of every plan to results/backtest/.
 """
@@ -28,6 +32,7 @@ from uvr_loan.portfolio import (
     inverse_volatility_weights,
     ladder_floor,
     ladder_purchases,
+    payments_by_month,
 )
 
 # A fixed-rate CDT lot: `principal_cop` bought in month `buy_month` at the annual `rate_ea`,
@@ -60,6 +65,7 @@ def conservative_strategy(
     lots: list[Lot],
     payment_schedule: pd.DataFrame,
     cfg: dict[str, Any],
+    state: dict[str, Any] | None = None,
 ) -> Allocation:
     """Plan 1. Its CDT matures exactly at the next review, so no lot is alive at a review.
 
@@ -134,6 +140,7 @@ def cdt_ladder_strategy(
     lots: list[Lot],
     payment_schedule: pd.DataFrame,
     cfg: dict[str, Any],
+    state: dict[str, Any] | None = None,
 ) -> Allocation:
     """Plan 2: ladder of fixed-rate CDTs from the LP in UVR.
 
@@ -164,6 +171,7 @@ def ldi_strategy(
     lots: list[Lot],
     payment_schedule: pd.DataFrame,
     cfg: dict[str, Any],
+    state: dict[str, Any] | None = None,
 ) -> Allocation:
     """Plan 3: CDT ladder up to the floor, ETFs with the rest (CPPI with m = 1).
 
@@ -174,53 +182,110 @@ def ldi_strategy(
     free money is below the floor, no ladder is possible: the money stays in the FIC, as in plan 2.
     The ladder buys the same CDT terms as plan 2 (`cdt_ladder.term_columns`).
     """
-    params = cfg["ldi"]
-    row = history.iloc[-1]
-    uvr = row["uvr_cop"]
-    maturities, cdt_real_ea, fic_real_ea = _ladder_inputs(tau, history, lots, cfg, params["floor_scenario"])
-    floor_uvr = ladder_floor(tau, maturities, payment_schedule, cfg, cdt_real_ea, fic_real_ea)
-    ladder_uvr = min(free_cop / uvr, (1 + params["floor_buffer"]) * floor_uvr)
-    try:
-        buy_uvr = ladder_purchases(
-            tau, ladder_uvr, maturities, payment_schedule, cfg, cdt_real_ea, fic_real_ea
-        )
-    except ValueError:
-        buy_uvr = {}
-    growth_cop = free_cop - ladder_uvr * uvr
-    weights = inverse_volatility_weights({name: row[f"{name}_vol_ea"] for name in params["growth_assets"]})
-    # The solver tolerance can spend a fraction of a peso more than the ladder budget.
-    fic = max(ladder_uvr * uvr - sum(buy_uvr.values()) * uvr, 0.0)
-    etfs = {name: growth_cop * w for name, w in weights.items()}
-    return Allocation(fic, etfs, _bought_lots(tau, row, buy_uvr, cfg), floor_cop=floor_uvr * uvr)
+    inputs = _ldi_inputs(tau, history, lots, payment_schedule, cfg)
+    free_uvr = free_cop / inputs.uvr
+    ladder_uvr = min(free_uvr, (1 + cfg["ldi"]["floor_buffer"]) * inputs.floor_uvr)
+    return _ldi_allocation(tau, history, free_cop, ladder_uvr, inputs, payment_schedule, cfg)
 
 
-def trend_ldi_strategy(
+def ratchet_ldi_strategy(
     tau: int,
     history: pd.DataFrame,
     free_cop: float,
     lots: list[Lot],
     payment_schedule: pd.DataFrame,
     cfg: dict[str, Any],
+    state: dict[str, Any] | None = None,
 ) -> Allocation:
-    """Plan 4: plan 3 with a trend filter on the ETFs.
+    """Plan 4: plan 3 with a ratchet (TIPP, Estep and Kritzman 1988) on the real surplus.
 
-    Same floor, ladder and inverse-volatility split as `ldi_strategy`. An ETF whose return of the last
-    `data.trend_window_months` months (`<name>_trend_ret`, known at tau) is below
-    `trend_ldi.min_trailing_return` gets no money: its share stays in the FIC, it is not given to the
-    other ETFs. The filter is evaluated again at every review.
+    Symbols as in docs/reglas_de_inversion.md. In UVR at the review: A = free money, V = value of the
+    live CDTs, L = cost of covering every remaining payment from scratch (`ladder_floor` without live
+    CDTs), B = floor of the free money (as in plan 3) and b = `ldi.floor_buffer`. The surplus is
+    S = A + V - L: assets minus liabilities of the whole portfolio. Paying installments and the UVR
+    indexation do not change S; ETF prices, CDT rates and inflation against the expected one do.
+    CDTs bought with surplus money stay in S at the next review. The surplus can't use A - B: live
+    CDTs worth more than the payments they cover would not count anywhere.
+
+    `state["peak_surplus_uvr"]` keeps the highest S of the run (this review included). The protected
+    level of the whole portfolio is Z = L + phi * max(peak, 0), with phi = `ratchet_ldi.protected_share`,
+    and the ETFs get G = clip(kappa (A + V - Z), 0, max(A - (1 + b) B, 0)), with
+    kappa = 1 / `ratchet_ldi.max_fall` (delta): when the cap does not bind, a fall of the ETFs of delta
+    between two reviews takes the assets down to Z at most. The cap is plan 3's ETF money, so the ladder
+    LP always gets at least (1 + b) B and buys CDTs with A - G. At a peak the ETFs get
+    kappa (1 - phi) S or the cap, so never more than plan 3.
+    Raises ValueError if `max_fall` is not positive.
     """
-    alloc = ldi_strategy(tau, history, free_cop, lots, payment_schedule, cfg)
-    row, minimum = history.iloc[-1], cfg["trend_ldi"]["min_trailing_return"]
-    kept = {name: cop for name, cop in alloc.etf_cop.items() if row[f"{name}_trend_ret"] >= minimum}
-    left_out = sum(alloc.etf_cop.values()) - sum(kept.values())
-    return alloc._replace(fic_cop=alloc.fic_cop + left_out, etf_cop=kept)
+    params = cfg["ratchet_ldi"]
+    if not params["max_fall"] > 0:
+        raise ValueError(f"ratchet_ldi.max_fall must be positive, got {params['max_fall']}")
+    state = {} if state is None else state
+    inputs = _ldi_inputs(tau, history, lots, payment_schedule, cfg)
+    free_uvr = free_cop / inputs.uvr
+    live_uvr = sum(lot_value(lot, tau) for lot in lots) / inputs.uvr
+    liabilities_uvr = ladder_floor(tau, {}, payment_schedule, cfg, inputs.cdt_real_ea, inputs.fic_real_ea)
+    assets_uvr = free_uvr + live_uvr
+    peak = max(state.get("peak_surplus_uvr", -np.inf), assets_uvr - liabilities_uvr)
+    state["peak_surplus_uvr"] = peak
+    protected = liabilities_uvr + params["protected_share"] * max(peak, 0.0)
+    plan3_etf = max(free_uvr - (1 + cfg["ldi"]["floor_buffer"]) * inputs.floor_uvr, 0.0)
+    etf_uvr = min(max((assets_uvr - protected) / params["max_fall"], 0.0), plan3_etf)
+    return _ldi_allocation(tau, history, free_cop, free_uvr - etf_uvr, inputs, payment_schedule, cfg)
+
+
+class _LdiInputs(NamedTuple):
+    """What plans 3 and 4 compute at a review before deciding the ladder budget."""
+
+    uvr: float
+    floor_uvr: float
+    maturities: dict[int, float]
+    cdt_real_ea: dict[int, float]
+    fic_real_ea: float
+
+
+def _ldi_inputs(
+    tau: int, history: pd.DataFrame, lots: list[Lot], payment_schedule: pd.DataFrame, cfg: dict[str, Any]
+) -> _LdiInputs:
+    maturities, cdt_real_ea, fic_real_ea = _ladder_inputs(
+        tau, history, lots, cfg, cfg["ldi"]["floor_scenario"]
+    )
+    floor_uvr = ladder_floor(tau, maturities, payment_schedule, cfg, cdt_real_ea, fic_real_ea)
+    return _LdiInputs(history["uvr_cop"].iloc[-1], floor_uvr, maturities, cdt_real_ea, fic_real_ea)
+
+
+def _ldi_allocation(
+    tau: int,
+    history: pd.DataFrame,
+    free_cop: float,
+    ladder_uvr: float,
+    inputs: _LdiInputs,
+    payment_schedule: pd.DataFrame,
+    cfg: dict[str, Any],
+) -> Allocation:
+    """Buy the CDT ladder with `ladder_uvr` (what the LP does not spend stays in the FIC) and split the
+    rest of the free money between the ETFs of `ldi.growth_assets` by inverse volatility."""
+    row, uvr = history.iloc[-1], inputs.uvr
+    try:
+        buy_uvr = ladder_purchases(
+            tau, ladder_uvr, inputs.maturities, payment_schedule, cfg, inputs.cdt_real_ea, inputs.fic_real_ea
+        )
+    except ValueError:
+        buy_uvr = {}
+    growth_cop = free_cop - ladder_uvr * uvr
+    weights = inverse_volatility_weights(
+        {name: row[f"{name}_vol_ea"] for name in cfg["ldi"]["growth_assets"]}
+    )
+    # The solver tolerance can spend a fraction of a peso more than the ladder budget.
+    fic = max(ladder_uvr * uvr - sum(buy_uvr.values()) * uvr, 0.0)
+    etfs = {name: growth_cop * w for name, w in weights.items()}
+    return Allocation(fic, etfs, _bought_lots(tau, row, buy_uvr, cfg), floor_cop=inputs.floor_uvr * uvr)
 
 
 PLANS = {
     "conservative": conservative_strategy,
     "cdt_ladder": cdt_ladder_strategy,
     "ldi": ldi_strategy,
-    "trend_ldi": trend_ldi_strategy,
+    "ratchet_ldi": ratchet_ldi_strategy,
 }
 
 
@@ -268,23 +333,28 @@ def run_backtest(
     """
     bt = cfg["backtest"]
     reviews = set(decision_months(bt))
-    payments_uvr = payment_schedule.set_index("month")["total_payment_uvr"]
+    payments_uvr = payments_by_month(payment_schedule, bt["horizon_months"])
     allocate = PLANS[plan]
     names = list(cfg["data"]["etfs"])
     check_panel(panel, bt, [name + PRICE_SUFFIX for name in names])
+    # The columns used every month, as arrays indexed by month (pandas access per month is slow).
+    periods = [month_to_period(bt["t0"], m) for m in range(bt["horizon_months"] + 1)]
+    used = panel.loc[periods]
+    fic_ret, uvr = used["fic_ret_m"].to_numpy(), used["uvr_cop"].to_numpy()
+    price_arrays = {name: used[name + PRICE_SUFFIX].to_numpy() for name in names}
 
     fic, lots = float(cfg["initial_capital_cop"]), []
     units = dict.fromkeys(names, 0.0)
+    state: dict[str, Any] = {}  # what the plan remembers between the reviews of this run
     rows = []
     for m in range(bt["horizon_months"] + 1):
-        row = panel.loc[month_to_period(bt["t0"], m)]
-        prices = {name: row[name + PRICE_SUFFIX] for name in names}
+        prices = {name: price_arrays[name][m] for name in names}
         payment = shortfall = etf_sold = 0.0
         if m > 0:
-            fic *= 1 + row["fic_ret_m"]  # realized return of the FIC index in month m
+            fic *= 1 + fic_ret[m]  # realized return of the FIC index in month m
             fic += sum(lot_value(lot, m) for lot in lots if lot["maturity_month"] == m)
             lots = [lot for lot in lots if lot["maturity_month"] != m]
-            payment = payments_uvr.get(m, 0.0) * row["uvr_cop"]
+            payment = payments_uvr[m] * uvr[m]
             shortfall = max(payment - fic, 0.0)
             fic -= payment - shortfall
             etf_total = sum(units[n] * prices[n] for n in names)
@@ -296,8 +366,8 @@ def run_backtest(
         floor = funding = np.nan
         if m in reviews:
             free_cop = fic + sum(units[n] * prices[n] for n in names)
-            history = panel.loc[: month_to_period(bt["t0"], m)]  # only data known at the review
-            alloc = allocate(m, history, free_cop, lots, payment_schedule, cfg)
+            history = panel.loc[: periods[m]]  # only data known at the review
+            alloc = allocate(m, history, free_cop, lots, payment_schedule, cfg, state)
             fic, floor = alloc.fic_cop, alloc.floor_cop
             funding = total_funding_ratio(free_cop, sum(lot_value(lot, m) for lot in lots), floor)
             units = dict.fromkeys(names, 0.0) | {n: cop / prices[n] for n, cop in alloc.etf_cop.items()}
@@ -309,8 +379,8 @@ def run_backtest(
         rows.append(
             {
                 "month": m,
-                "period": str(month_to_period(bt["t0"], m)),
-                "uvr_cop": row["uvr_cop"],
+                "period": str(periods[m]),
+                "uvr_cop": uvr[m],
                 "payment_cop": payment,
                 "shortfall_cop": shortfall,
                 "etf_sold_cop": etf_sold,

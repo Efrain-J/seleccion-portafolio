@@ -213,21 +213,19 @@ def test_etf_columns_convert_usd_with_the_trm_of_the_same_month_and_use_past_vol
     usd = pd.Series([9.0, 10.0, 11.0, 9.9], days)
     trm = pd.Series([3_000.0, 4_000.0, 4_000.0, 5_000.0], days)
     cols = etf_columns(
-        {"cspx": usd, "icolcap": usd * 1_000}, {"cspx": "USD", "icolcap": "COP"}, trm, window=2, trend_window=2
+        {"cspx": usd, "icolcap": usd * 1_000}, {"cspx": "USD", "icolcap": "COP"}, trm, window=2
     )
     assert list(cols["cspx_price_cop"]) == pytest.approx([40_000.0, 44_000.0, 49_500.0])
     assert list(cols["icolcap_price_cop"]) == pytest.approx([10_000.0, 11_000.0, 9_900.0])
     returns = pd.Series([0.10, 0.125])  # COP returns of cspx in February and March
     assert cols["cspx_vol_ea"].iloc[-1] == pytest.approx(returns.std() * 12**0.5)
     assert cols["cspx_vol_ea"].iloc[:2].isna().all()  # needs `window` returns
-    assert cols["cspx_trend_ret"].iloc[-1] == pytest.approx(49_500.0 / 40_000.0 - 1)  # last `trend_window` months
-    assert cols["cspx_trend_ret"].iloc[:2].isna().all()
 
 
 def test_etf_columns_reject_an_unknown_currency():
     s = pd.Series([1.0], pd.to_datetime(["2020-01-31"]))
     with pytest.raises(ValueError, match="EUR"):
-        etf_columns({"x": s}, {"x": "EUR"}, s, window=2, trend_window=2)
+        etf_columns({"x": s}, {"x": "EUR"}, s, window=2)
 
 
 def test_etf_cache_file_includes_the_start_date(monkeypatch, tmp_path):
@@ -266,7 +264,7 @@ def test_etf_columns_only_use_data_up_to_each_month():
     trm_bad[later] *= 0.2
 
     def build(price, rate):
-        return etf_columns({"cspx": price}, {"cspx": "USD"}, rate, window=12, trend_window=12)
+        return etf_columns({"cspx": price}, {"cspx": "USD"}, rate, window=12)
 
     base, bad = build(usd, trm), build(usd_bad, trm_bad)
     month = cut.to_period("M")

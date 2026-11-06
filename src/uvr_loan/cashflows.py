@@ -4,6 +4,7 @@ Months are counted from t0: month 0 is t0 (Oct 2016) and month m is paid at the
 end of calendar month t0 + m.
 """
 
+from functools import lru_cache
 from typing import Any
 
 import pandas as pd
@@ -16,6 +17,7 @@ def decision_months(backtest: dict[str, Any]) -> list[int]:
     return list(range(0, backtest["horizon_months"], backtest["review_every_months"]))
 
 
+@lru_cache(maxsize=4096)  # called every month of every backtest; a Period is immutable
 def month_to_period(t0: str, month: int) -> pd.Period:
     return pd.Period(t0, "M") + month
 

@@ -1,8 +1,11 @@
 # Reglas de inversión
 
 Cómo se decide dónde y cuánto invertir en cada plan: el **plan 1 (conservador)**, el **plan 2 (escalera de CDT
-optimizada)**, el **plan 3 (LDI: piso en CDT y crecimiento en ETF)** y el **plan 4 (plan 3 con filtro de
-tendencia)**. Al final, una prueba de estrés repite el backtest con ETF que pierden dinero.
+optimizada)**, el **plan 3 (LDI: piso en CDT y crecimiento en ETF)** y el **plan 4 (plan 3 con trinquete
+TIPP)**. Los escenarios sintéticos de los ETF (`python -m uvr_loan.synthetic`) repiten el backtest de los planes 2, 3 y
+4 con precios de ETF simulados (2.000 caminos por escenario) en 8 escenarios: los dos ETF bajan, planos pero volátiles,
+uno sube y otro baja, caída de 40 % con recuperación, seno, y tres en que los ETF suben en promedio. Los resultados
+están en `results/synthetic/` y las gráficas en `notebooks/synthetic_etf_scenarios.ipynb`.
 
 **Criterio de los resultados.** Las decisiones pueden usar estimaciones (por ejemplo, la inflación esperada), siempre
 con datos conocidos en la fecha de la revisión. El dinero reportado sale solo de rendimientos observados de
@@ -32,6 +35,9 @@ Parámetros: `config/assumptions.yaml`.
 | LP | Programa lineal: optimización con objetivo y restricciones lineales |
 | LDI | Inversión guiada por los pasivos (*liability-driven investment*): primero se cubren los pagos, después se invierte el resto |
 | CPPI | Seguro de portafolio de proporción constante: se arriesga solo un múltiplo del dinero que sobra sobre un piso |
+| Trinquete (TIPP) | Variante de CPPI (*time-invariant portfolio protection*) en que el nivel protegido sube con la mejor posición alcanzada y nunca baja |
+| Excedente | Activos menos pasivos de todo el portafolio: lo que sobra después de reservar el costo de todos los pagos |
+| Indicador de cobertura (FR) | Activos sobre pasivos (*funding ratio*); mayor que 1 significa que sobra dinero |
 
 ## Notación común
 
@@ -61,9 +67,13 @@ $\text{UVR}_\tau$ al ejecutarlas.
 | $\bar r^{\text{FIC}}_m$ | La misma, anualizada: conocida al cierre del mes $m$, se usa para decidir | decimal E.A. | columna `fic_rate_ea` |
 | $r_j(\tau)$ | Tasa observada del CDT de plazo $j$ meses comprado en $\tau$ ($j$ = 3, 6, 12: DTF, CDT 180 y 360 días) | decimal E.A. | columnas `cdt_90d_ea`, `cdt_180d_ea`, `cdt_360d_ea` |
 | $F_m$ | Saldo del FIC al cierre del mes $m$ (después de crecer, recibir lo que vence y pagar; si $m$ es revisión, después de reasignar) | COP | columna `fic_cop` |
+| $F^{-}_m$ | Saldo del FIC en el mes $m$ después de crecer y recibir lo que vence, antes de pagar | COP | – |
 | $W_\tau$ | Dinero libre en $\tau$: FIC + ETF a precio de mercado (lo que vence en $\tau$ ya está en el FIC; los CDT vivos no cuentan) | COP | variable `free_cop` |
+| $A_\tau$ | El dinero libre en UVR: $W_\tau / \text{UVR}_\tau$ (presupuesto de los LP) | UVR | variables `budget_uvr`, `free_uvr` |
 | $E_m$ | Valor de los ETF al cierre del mes $m$, a precio de mercado (suma de todos; cada uno en `<nombre>_cop`; si $m$ es revisión, después de reasignar) | COP | columna `etf_cop` |
+| $E^{-}_m$ | Valor de los ETF a precio del mes $m$, antes de pagar | COP | – |
 | $\text{CDT}_m$ | Valor acumulado de los CDT vivos al cierre del mes $m$ | COP | columna `cdt_cop` |
+| $V_\tau$ | Valor acumulado de los CDT vivos en $\tau$, antes de comprar los nuevos ($V_\tau/\text{UVR}_\tau$ en UVR) | COP | – |
 | $D_m$ | Déficit del mes $m$: parte del pago que no cubren ni el FIC ni el ETF | COP | columna `shortfall_cop` |
 
 **Definiciones:**
@@ -186,8 +196,8 @@ Las fuentes de cada serie están en [`data/SOURCES.md`](../data/SOURCES.md).
 
 | Símbolo | Significado | Unidad | En el código |
 |---|---|---|---|
-| $L_\tau$ | Necesidad de liquidez en $\tau$: pagos hasta que venza el nuevo CDT | COP | función `projected_payments_cop` |
-| $\theta$ | Parte de $W_\tau - L_\tau$ que va al CDT (0,90; 1,00 en las revisiones de la gracia, `grace_cdt_weight`); el resto queda en el FIC | decimal | YAML `conservative.cdt_weight` |
+| $N_\tau$ | Necesidad de liquidez en $\tau$: pagos hasta que venza el nuevo CDT | COP | función `projected_payments_cop` |
+| $\theta$ | Parte de $W_\tau - N_\tau$ que va al CDT (0,90; 1,00 en las revisiones de la gracia, `grace_cdt_weight`); el resto queda en el FIC | decimal | YAML `conservative.cdt_weight` |
 
 ### En cada revisión $\tau$
 
@@ -197,11 +207,11 @@ oct-2017, …, abr-2026.
 **Paso 1: cuánto dinero libre hay ($W_\tau$).** $W_\tau$ = saldo del FIC, que ya incluye el CDT que vence ese mes (el
 plan 1 no tiene ETF). En $t_0$, $W_0$ = 760.000.000 COP (`initial_capital_cop`).
 
-**Paso 2: cuánto se necesita hasta que venza el nuevo CDT ($L_\tau$).** El CDT que se compra hoy vence en $\tau + k$
+**Paso 2: cuánto se necesita hasta que venza el nuevo CDT ($N_\tau$).** El CDT que se compra hoy vence en $\tau + k$
 y, por S12, paga $P_{\tau+k}$. El FIC solo cubre los pagos anteriores:
 
 $$
-L_\tau = \sum_{m=\tau+1}^{\tau+k-1} P_m\,\widehat{\text{UVR}}_{m\mid\tau}
+N_\tau = \sum_{m=\tau+1}^{\tau+k-1} P_m\,\widehat{\text{UVR}}_{m\mid\tau}
 $$
 
 con la UVR proyectada con $\pi_\tau = \pi^{\text{alto}}_\tau$ (`conservative.fic_sizing_scenario`, ver la notación
@@ -211,15 +221,15 @@ común; en oct-2016, 4,34 % + 3 p.p. = 7,34 %).
 
 | Instrumento | Monto |
 |---|---|
-| CDT | $\theta\,(W_\tau - L_\tau)$, con $\theta$ = 90 % hoy |
-| FIC | el resto: $L_\tau + (1 - \theta)(W_\tau - L_\tau)$ |
+| CDT | $\theta\,(W_\tau - N_\tau)$, con $\theta$ = 90 % hoy |
+| FIC | el resto: $N_\tau + (1 - \theta)(W_\tau - N_\tau)$ |
 
-**Durante la gracia:** mientras no hay pagos en $\tau+1, \dots, \tau+k-1$, $L_\tau = 0$ y no hace falta colchón, así
+**Durante la gracia:** mientras no hay pagos en $\tau+1, \dots, \tau+k-1$, $N_\tau = 0$ y no hace falta colchón, así
 que se usa $\theta$ = 100 % (`conservative.grace_cdt_weight`) y todo el dinero va al CDT. La primera cuota es la del
 mes 37 (nov-2019): esto aplica a las revisiones con $\tau$ < 36 (oct-2016 a abr-2019). Desde la revisión de oct-2019
 ($\tau$ = 36) se usa el 90 %.
 
-Si los pagos proyectados superan el dinero libre ($L_\tau > W_\tau$), la fórmula del CDT daría un monto negativo: en
+Si los pagos proyectados superan el dinero libre ($N_\tau > W_\tau$), la fórmula del CDT daría un monto negativo: en
 ese caso el CDT recibe 0 y todo queda en el FIC. La parte que no alcanza solo se convierte en déficit $D_m$ si al
 llegar el pago el FIC no lo cubre.
 
@@ -236,7 +246,7 @@ Así el FIC se ajusta a los pagos que vienen y el CDT vuelve a ser el 90 % del r
 
 ### Ejemplos (backtest con datos reales)
 
-| Revisión | $W_\tau$ | $L_\tau$ (pagos de $\tau+1$ a $\tau+k-1$) | FIC | CDT |
+| Revisión | $W_\tau$ | $N_\tau$ (pagos de $\tau+1$ a $\tau+k-1$) | FIC | CDT |
 |---|---|---|---|---|
 | oct-2016 (gracia, $\theta$ = 100 %) | 760,0M | 0 | 0 | 760,0M |
 | oct-2019 (antes de la primera cuota, $\theta$ = 90 %) | 897,6M | 27,9M | 114,9M | 782,7M |
@@ -244,7 +254,7 @@ Así el FIC se ajusta a los pagos que vienen y el CDT vuelve a ser el 90 % del r
 ### Riesgo y resultados
 
 - Sin meses con déficit y riqueza final de 701,0M.
-- El 10 % que queda en el FIC además de $L_\tau$ funciona como colchón: el saldo mínimo del FIC en un mes de pago fue
+- El 10 % que queda en el FIC además de $N_\tau$ funciona como colchón: el saldo mínimo del FIC en un mes de pago fue
   71,8M. A cambio, ese dinero rinde lo del FIC y no lo del CDT.
 
 ### Simplificaciones propias del plan 1
@@ -279,14 +289,12 @@ rinden sus tasas **observadas** (BanRep e índice de FIC); solo la decisión usa
 | $y_{s,j}$ | Monto invertido en el mes $s \in \mathcal R_\tau$ en un CDT de plazo $j$, con $s + j \le H$ | UVR | variable del LP |
 | $c_m$ | Caja (FIC) al cierre del mes $m$ dentro del LP | UVR | variable del LP |
 | $M_m$ | Lo que vence en el mes $m$ de los CDT comprados antes de $\tau$ | UVR | variable `maturities_uvr` |
-| $B_\tau$ | Presupuesto del LP: dinero libre en $\tau$, en UVR | UVR | variable `budget_uvr` |
+| $A_\tau$ | Presupuesto del LP: el dinero libre en UVR (ver la notación común) | UVR | variable `budget_uvr` |
 
 $$
 \tilde r_j(\tau) = \frac{1 + r_j(\tau)}{1 + \pi_\tau} - 1
 \qquad
 \rho_\tau = \frac{1 + \bar r^{\text{FIC}}_\tau}{1 + \pi_\tau} - 1
-\qquad
-B_\tau = \frac{W_\tau}{\text{UVR}_\tau}
 $$
 
 $$
@@ -311,7 +319,7 @@ FIC pagan en pesos y el LP trabaja en UVR, necesita su rendimiento en UVR, que n
 **Datos y variables del LP.**
 
 - **Fijo (datos, en UVR):** los pagos $P_m$ de los meses $\tau+1, \dots, H$; lo que vence de los CDT vivos, $M_m$; el
-  dinero libre $B_\tau$; los rendimientos reales esperados $\tilde r_j(\tau)$ y $\rho_\tau$.
+  dinero libre $A_\tau$; los rendimientos reales esperados $\tilde r_j(\tau)$ y $\rho_\tau$.
 - **Se decide (variables):** las compras de hoy $y_{\tau,j}$; las compras previstas en las revisiones futuras
   $y_{s,j}$, $s = \tau + k, \tau + 2k, \dots$ (solo si $s + j \le H$, es decir, si el CDT vence antes del final); y la
   caja $c_m$ al cierre de cada mes, después de pagar.
@@ -328,7 +336,7 @@ pagar todas las cuotas:
 $$
 \begin{aligned}
 \max_{y,\,c} \quad & c_H \\
-\text{s.a.} \quad & c_\tau + \sum_j y_{\tau,j} = B_\tau \\
+\text{s.a.} \quad & c_\tau + \sum_j y_{\tau,j} = A_\tau \\
 & c_m = c_{m-1}(1 + \rho_\tau)^{1/12} + \sum_j y_{m-j,\,j}\,\bigl(1 + \tilde r_j(\tau)\bigr)^{j/12} \\
 & \qquad\quad + M_m - \sum_j y_{m,j} - P_m, \qquad m = \tau+1, \dots, H \\
 & y_{s,j} \ge 0, \quad c_m \ge 0
@@ -347,7 +355,7 @@ Cómo se lee:
   $s + j > H$. En la restricción del mes $m$, $y_{m-j,j}$ es lo que vence (comprado en $m - j \ge \tau$) e $y_{m,j}$ lo
   que se compra ese mes, después de pagar $P_m$.
 
-Si $B_\tau$ es menor que la menor cantidad que cubre todos los pagos con $c_m \ge 0$, el LP no tiene solución (esa
+Si $A_\tau$ es menor que la menor cantidad que cubre todos los pagos con $c_m \ge 0$, el LP no tiene solución (esa
 cantidad mínima es el piso del plan 3).
 
 **Desempate:** si varias soluciones dejan la misma $c_H$ (pasa sobre todo en la gracia, donde dos CDT a 6 meses
@@ -465,10 +473,11 @@ inversionista colombiano. Los TES (UVR y tasa fija) quedan como tema pendiente p
 | $\mathcal A$ | Conjunto de ETF de crecimiento: {ICOLCAP, CSPX}; $i, l \in \mathcal A$ | – | YAML `ldi.growth_assets` |
 | $G_\tau$ | Parte de crecimiento (dinero para los ETF) en $\tau$ | COP | variable `growth_cop` |
 | $w_i$ | Peso del ETF $i$ dentro de $G_\tau$ (suman 1) | decimal | función `inverse_volatility_weights` |
-| $\sigma_i(\tau)$ | Volatilidad anual del ETF $i$: desviación estándar muestral de sus últimos 36 rendimientos mensuales en COP × $\sqrt{12}$, con datos hasta $\tau$ (YAML `data.vol_window_months`; ICOLCAP desde mayo de 2013 y CSPX desde 2013, así que en oct-2016 ya hay 36 meses) | decimal | columnas `<nombre>_vol_ea` |
+| $\sigma_i(\tau)$ | Volatilidad anual del ETF $i$: desviación estándar muestral de sus últimos 36 rendimientos mensuales en COP × $\sqrt{12}$, con datos hasta $\tau$ (YAML `data.vol_window_months`). Los precios empiezan en 2013, así que en oct-2016 ya hay 36 meses | decimal | columnas `<nombre>_vol_ea` |
+| $\text{FR}_\tau$ | Indicador de cobertura del portafolio completo (solo se reporta, ver el final de "Riesgo y resultados") | – | columna `funding_ratio_total` |
 
 Los símbolos parecidos son cosas distintas: $\Pi_\tau$ es el piso, $\pi_\tau$ la inflación y $P_m$ el pago; $b$ es el
-margen y $B$ el presupuesto del LP.
+margen y $B$ la variable de presupuesto del LP del piso.
 
 ### En cada revisión $\tau$
 
@@ -540,7 +549,7 @@ los datos reales esto no pasó.
 
 ### Ejemplos (backtest con datos reales)
 
-| Revisión | $W_\tau$ | Piso $\Pi_\tau$ (COP) | $\Phi_\tau$ | Escalera (CDT + FIC) | ICOLCAP | CSPX |
+| Revisión | $W_\tau$ | Piso $\Pi_\tau$ (COP) | $\text{FR}_\tau$ | Escalera (CDT + FIC) | ICOLCAP | CSPX |
 |---|---|---|---|---|---|---|
 | oct-2016 | 760,0M | 419,9M | 1,81 | 440,9M | 161,2M | 157,9M |
 | oct-2019 | 755,4M | 261,9M | 1,96 | 275,0M | 233,4M | 246,9M |
@@ -549,7 +558,7 @@ En oct-2016 la inflación alta era 7,34 % (4,34 % + 3 p.p.); la escalera compró
 242,5M a 12 meses (8,18 %). Las volatilidades eran 17,7 % (ICOLCAP) y 18,0 % (CSPX), así que los pesos quedaron casi
 iguales (50,5 % y 49,5 %). En oct-2019 $W_\tau$ no incluye los CDT comprados antes que siguen vivos (su valor más el de
 la escalera nueva suma 513,6M en CDT y 11,0M en el FIC); por eso el piso es menor que en 2016 aunque faltan los mismos
-pagos. $\Phi_\tau$ es el indicador de cobertura (ver el final de "Riesgo y resultados").
+pagos. $\text{FR}_\tau$ es el indicador de cobertura (ver el final de "Riesgo y resultados").
 
 ### Riesgo y resultados
 
@@ -563,11 +572,12 @@ pagos. $\Phi_\tau$ es el indicador de cobertura (ver el final de "Riesgo y resul
   riqueza final sí.
 - **El riesgo no entra en la decisión.** Todo lo que sobra sobre el piso va a los ETF, sin un tope y sin mirar cómo
   van: la parte en ETF sube de 42 % del dinero en oct-2016 a 96 % en abr-2026. La regla protege el pago de las
-  cuotas, no la riqueza.
+  cuotas, no la riqueza. El [plan 4](#plan-4--ldi-con-trinquete-tipp) agrega una regla que protege parte de la
+  riqueza.
 
-**Indicador reportado (no interviene en la decisión).** Sea $V_\tau$ el valor acumulado de los CDT vivos en $\tau$,
-antes de comprar los nuevos (COP). El indicador de cobertura del portafolio completo es
-$\Phi_\tau = (W_\tau + V_\tau) / (\Pi_\tau + V_\tau)$ (columna `funding_ratio_total`). Suma el valor de los CDT vivos
+**Indicador reportado (no interviene en la decisión).** Con $V_\tau$ el valor de los CDT vivos (notación común), el
+indicador de cobertura del portafolio completo es
+$\text{FR}_\tau = (W_\tau + V_\tau) / (\Pi_\tau + V_\tau)$ (columna `funding_ratio_total`). Suma el valor de los CDT vivos
 arriba y abajo: así no salta cuando hay CDT vivos (el piso del dinero libre baja porque ellos cubren parte de los
 pagos, e incluso llega a 0 cuando los cubren todos) y no divide por cero mientras queden pagos. Con $k = 6$ su menor
 valor fue 1,64 (abr-2017) y sube a medida que se pagan las cuotas: 2,30 en oct-2020, 3,77 en oct-2023 y 25,7 en
@@ -580,38 +590,111 @@ abr-2026.
   permitir cobertura parcial.
 - **Piso solo en las revisiones:** no se revisa cada mes. Con $\kappa = 1$ no hace falta, porque una caída de los ETF
   no reduce la escalera.
-- **Sin regla para asegurar ganancias:** aunque $\Phi_\tau$ sea alto, no se pasa dinero de los ETF a la escalera.
+- **Sin regla para asegurar ganancias:** aunque $\text{FR}_\tau$ sea alto, no se pasa dinero de los ETF a la escalera
+  (es lo que agrega el plan 4).
 - **Sin cobertura cambiaria (S19)**, venta inmediata (S16) y conversión a la TRM (S17).
 - Además aplican los supuestos comunes.
 
-## Plan 4 – LDI con filtro de tendencia
+## Plan 4 – LDI con trinquete (TIPP)
 
-Es el [plan 3](#plan-3--ldi-piso-en-cdt-y-crecimiento-en-etf) con un solo cambio, en la parte de crecimiento: un ETF
-que viene perdiendo no recibe dinero, y su parte queda en el FIC. Todo lo que no se describe aquí es igual al plan 3.
+Es el [plan 3](#plan-3--ldi-piso-en-cdt-y-crecimiento-en-etf) con un solo cambio: cuánto dinero va a los ETF. El plan 3
+pone en ETF todo lo que sobra sobre el piso y nunca vende después de una caída. El plan 4 protege una parte de la
+mejor posición alcanzada hasta ahora (un **trinquete**, en inglés *ratchet*): después de una ganancia guarda una parte
+en CDT, y después de una caída reduce los ETF más rápido que la caída. Es la regla TIPP (*time-invariant portfolio
+protection*, Estep y Kritzman, 1988): una regla CPPI con multiplicador $\kappa > 1$ y un nivel protegido que sube con
+el mejor excedente. Todo lo que no se describe aquí es igual al plan 3.
+
+Código: `ratchet_ldi_strategy` en `src/uvr_loan/backtest.py`. El mayor excedente se guarda en un diccionario `state`
+que `run_backtest` crea en cada corrida y pasa a la estrategia en cada revisión.
+
+### Idea
+
+El trinquete mira el **excedente** del portafolio completo: lo que valen los activos menos lo que costaría cubrir
+todos los pagos que faltan, como el patrimonio de una empresa. Los activos son el dinero libre $A_\tau$ (FIC y ETF a
+precio de mercado) más el valor de los CDT vivos; los pasivos, $L_\tau$, son el costo de una escalera nueva que cubra
+todos los pagos desde cero (el piso calculado sin contar los CDT vivos).
+
+**Por qué los CDT vivos cuentan por su valor.** Un CDT vivo que vale 500 y cubre un pago de 100 deja el piso del
+dinero libre en 0. Si el excedente fuera dinero libre menos ese piso ($A_\tau - B^{\min}_\tau$), los 400 que el CDT vale
+por encima del pago que cubre no aparecerían en ningún lado. El trinquete compra CDT con el excedente, así que en la
+revisión siguiente vería una caída que no ocurrió. Con activos menos pasivos el CDT cuenta 500 en los activos y el
+pago cuenta 100 en los pasivos, y los 400 siguen en el excedente.
+
+**Qué mueve el excedente.** Pagar una cuota baja los activos y los pasivos en la misma cantidad, y medir en UVR quita
+la indexación del crédito; ninguna de las dos cosas cambia el excedente. Lo cambian los precios de los ETF, las tasas
+de CDT (los pasivos se recalculan en cada revisión con las tasas del día) y la inflación observada frente a la
+esperada (el FIC y los CDT pagan en pesos).
+
+**Por qué no el indicador de cobertura $\text{FR}_\tau$:** sube solo a medida que se pagan las cuotas (en el plan 3
+llega a 25,7), así que un trinquete sobre él protegería cada vez más sin una razón de mercado.
 
 ### Instrumentos
 
-Los mismos del plan 3.
+Los mismos del plan 3. El dinero que el trinquete saca de los ETF compra más CDT (no queda en el FIC).
 
 ### Notación del plan 4
 
-Además de la del plan 3:
+Además de la del plan 3, todo en UVR en la revisión $\tau$ ($A_\tau$ y $V_\tau$ están en la notación común; aquí
+$V_\tau$ se usa en UVR, $V_\tau / \text{UVR}_\tau$):
 
 | Símbolo | Significado | Unidad | En el código |
 |---|---|---|---|
-| $g_i(\tau)$ | Rendimiento del ETF $i$ en los últimos 12 meses, en COP, conocido en $\tau$: $P_i(\tau) / P_i(\tau - 12) - 1$, con $P_i$ el precio del ETF | decimal | columnas `<nombre>_trend_ret`, YAML `data.trend_window_months` |
-| $\underline g$ | Rendimiento mínimo para recibir dinero (0) | decimal | YAML `trend_ldi.min_trailing_return` |
+| $L_\tau$ | **Pasivos**: costo de cubrir todos los pagos que faltan desde cero (el piso sin contar los CDT vivos) | UVR | `liabilities_uvr` (`ladder_floor` sin vencimientos) |
+| $S_\tau$ | **Excedente**: $A_\tau + V_\tau - L_\tau$ | UVR | `assets_uvr - liabilities_uvr` |
+| $S^{\max}_\tau$ | El mayor excedente de las revisiones hasta $\tau$ (incluida) | UVR | `state["peak_surplus_uvr"]` |
+| $\varphi$ | Parte protegida del mayor excedente (0,80) | decimal | YAML `ratchet_ldi.protected_share` |
+| $\delta$ | Caída de los ETF entre dos revisiones que la regla absorbe (0,25) | decimal | YAML `ratchet_ldi.max_fall` |
+| $\kappa$ | Multiplicador CPPI: $\kappa = 1/\delta = 4$ (en el plan 3, $\kappa = 1$) | – | – |
+| $Z_\tau$ | **Nivel protegido** de todo el portafolio | UVR | `protected` |
+| $G_\tau$ | Dinero para los ETF (el mismo $G_\tau$ del plan 3, aquí en UVR) | UVR | `etf_uvr` |
+
+Los dos pisos son distintos: $B^{\min}_\tau$ (plan 3) es el piso **del dinero libre**, descontando lo que cubren los
+CDT vivos; $L_\tau$ es el costo **total**, sin descontarlos. $B^{\min}_\tau$ decide cuánto necesita la escalera nueva;
+$L_\tau$ mide el excedente.
 
 ### En cada revisión $\tau$
 
-**Pasos 1 y 2:** iguales al plan 3 (piso y escalera).
+**Paso 1:** igual al plan 3 (piso $B^{\min}_\tau$ del dinero libre). Además se calcula $L_\tau$ con el mismo LP pero
+sin CDT vivos.
 
-**Paso 3 (cambia):** $G_\tau$ y los pesos $w_i$ se calculan como en el plan 3. El ETF $i$ recibe $w_i\,G_\tau$ solo si
-$g_i(\tau) \ge \underline g$; si no, esa parte queda en el FIC. No se le pasa al otro ETF, para que un ETF que pierde no
-aumente la exposición al otro. Si los dos fallan, todo $G_\tau$ queda en el FIC. En la siguiente revisión se vuelve a
-evaluar: un ETF vuelve cuando su $g_i$ es otra vez $\ge \underline g$.
+**Paso 2: el trinquete.**
 
-Código: `trend_ldi_strategy` en `src/uvr_loan/backtest.py`.
+$$
+S_\tau = A_\tau + V_\tau - L_\tau, \qquad S^{\max}_\tau = \max\bigl(S^{\max}_{\tau - k},\ S_\tau\bigr), \qquad S^{\max}_0 = S_0
+$$
+
+$$
+Z_\tau = L_\tau + \varphi\,\max\bigl(S^{\max}_\tau, 0\bigr)
+$$
+
+$$
+G_\tau = \min\Bigl(\max\bigl(\kappa\,(A_\tau + V_\tau - Z_\tau),\ 0\bigr),\ \max\bigl(A_\tau - (1 + b)\,B^{\min}_\tau,\ 0\bigr)\Bigr)
+$$
+
+$A_\tau + V_\tau - Z_\tau$ es el **colchón**: lo que los activos tienen por encima del nivel protegido. Cada peso de
+colchón permite $\kappa$ = 4 pesos de ETF. Así, cuando el tope no manda, una caída de los ETF de $\delta$ = 25 % antes
+de la siguiente revisión baja los activos en $\delta\,G_\tau$, que es justo el colchón: los activos llegan hasta
+$Z_\tau$ y no más abajo. El tope es el dinero de ETF del plan 3, así que la escalera siempre recibe al menos
+$(1 + b)\,B^{\min}_\tau$ y los pagos quedan cubiertos igual que en el plan 3.
+
+**Paso 3: comprar.** La escalera recibe $A_\tau - G_\tau$ (más que en el plan 3 cuando el trinquete actúa) y el LP
+del plan 2 decide los CDT; $G_\tau$ se reparte entre los ETF por volatilidad inversa, como en el plan 3.
+
+**Cuánto queda en ETF:**
+
+- **En un máximo** ($S_\tau = S^{\max}_\tau$, con el excedente positivo) el colchón es $(1 - \varphi)\,S_\tau$ y los ETF
+  reciben $\kappa\,(1 - \varphi)\,S_\tau = (1 - \varphi)/\delta \cdot S_\tau = 0{,}20 / 0{,}25 \cdot S_\tau = 0{,}80\,S_\tau$,
+  o el tope del plan 3 si es menor. Es decir, **no más que el plan 3**: menos cuando el tope no manda (oct-2016 en los
+  ejemplos), igual cuando manda (abr-2026). El 80 % no es una meta: sale de los dos parámetros. Si se quisiera que en un
+  máximo el plan 4 tuviera lo mismo que el plan 3, haría falta $\varphi = 1 - \delta$.
+- **Después de una caída** del excedente de $x$ desde el máximo, el colchón baja $x$ y los ETF bajan $\kappa\,x$: con
+  $x \ge (1 - \varphi)\,S^{\max}_\tau$ (20 % del máximo) no queda nada en ETF.
+- **Relación con el plan 3:** con $\varphi = 0$ y $\delta = 1$ el plan 4 da lo mismo que el plan 3 siempre que
+  $A_\tau + V_\tau - L_\tau \ge A_\tau - (1 + b)\,B^{\min}_\tau$, es decir, que los CDT vivos valgan al menos lo que
+  cubren del piso (descontando el margen). Se cumple en los datos de prueba
+  (`test_ratchet_without_protection_and_with_m_1_is_plan_3`).
+- **El costo de la protección:** menos ETF cuando el mercado sube. Con los datos reales el plan 4 termina con 127,7M
+  menos que el plan 3, con una volatilidad y una máxima caída cerca de 25 % menores.
 
 ### Entre revisiones (cada mes)
 
@@ -619,31 +702,53 @@ Igual que el plan 3.
 
 ### Ejemplos (backtest con datos reales)
 
-Revisiones en que el filtro dejó un ETF por fuera:
+Millones de COP ($A$, $V$, $L$, $S$ y $Z$ pasados a COP con la UVR de la revisión):
 
-| Revisión | ICOLCAP $g$ | CSPX $g$ | Fuera | Parte en ETF |
-|---|---|---|---|---|
-| abr-2020 | −23,5 % | +23,9 % | ICOLCAP | 28 % |
-| oct-2020 | −25,6 % | +24,7 % | ICOLCAP | 32 % |
-| oct-2022 | −9,2 % | +8,7 % | ICOLCAP | 39 % |
-| abr-2023 | −19,0 % | +17,3 % | ICOLCAP | 38 % |
-| oct-2023 | −3,5 % | −8,0 % | los dos | 0 % |
+| Revisión | $A$ | $V$ | $L$ | $S$ | $S^{\max}$ | $Z$ | ETF plan 4 ($G$) | ETF que tendría el plan 3 |
+|---|---|---|---|---|---|---|---|---|
+| oct-2016 | 760,0 | 0,0 | 419,9 | 340,1 | 340,1 | 692,0 | 272,1 (36 %) | 319,1 |
+| oct-2019 | 730,3 | 249,6 | 512,4 | 467,5 | 467,5 | 886,4 | 374,0 (51 %) | 455,3 |
+| abr-2020 | 602,8 | 337,0 | 491,8 | 448,0 | 477,0 | 873,4 | 265,6 (44 %) | 440,5 |
+| abr-2026 | 982,3 | 241,7 | 49,9 | 1.174,2 | 1.174,2 | 989,2 | 938,7 (96 %) | 938,7 |
+
+En oct-2016 el plan 4 pone 272,1M en ETF en vez de 319,1M: es el $0{,}80\,S$ de un máximo, con el tope del plan 3
+por encima. En abr-2020 (después de la caída de marzo) el excedente estaba 6 % por debajo de su máximo y los ETF
+bajaron a 60 % de lo que tendría el plan 3. En abr-2026 el excedente es grande frente a los pasivos que quedan y el
+tope (lo del plan 3) es el que manda.
 
 ### Riesgo y resultados
 
-- Sin meses con déficit.
-- Riqueza final 1.211,5M. Rentabilidad anual 11,0 %, volatilidad 7,7 %, máxima caída 7,1 %.
-- **Limitaciones del filtro:** solo ve pérdidas que ya pasaron (los últimos 12 meses) y decide cada $k$ meses: puede
-  sacar un ETF después de la caída y volver a comprarlo después de la subida. No pone un tope a la parte en ETF.
+- Sin meses con déficit. Dos veces el FIC quedó corto por muy poco y se vendieron ETF, como en el plan 3: jun-2021 y
+  jun-2022 (50.399 COP en total). La menor liquidez (FIC + ETF) en un mes de pago fue 305,6M.
+- Riqueza final 1.224,8M (plan 3: 1.352,5M). Rentabilidad anual 11,2 %, volatilidad 6,2 %, máxima caída 5,5 % (plan 3:
+  11,9 %, 8,3 % y 7,1 %).
+- **El trinquete cambia rentabilidad por estabilidad:** con estos datos, en que las acciones subieron, deja de ganar
+  127,7M frente al plan 3. En los escenarios sintéticos (`python -m uvr_loan.synthetic`) se compara en caminos que
+  suben, bajan y oscilan.
+- La parte en ETF depende de cuánto excedente hay y de cuánto se ha perdido desde el máximo, no de una señal de
+  precios.
+- **Elección de $\delta$ = 25 %.** Se comparó con los datos desde 2013. La peor caída de 6 meses en COP fue −30,5 %
+  para ICOLCAP (hasta may-2020; −33,4 % del máximo al mínimo) y −17,4 % para CSPX (hasta jun-2022). La de la mezcla de
+  los dos ETF con los pesos de volatilidad inversa, que es lo que la regla tiene, fue −13,7 % (hasta may-2020): en la
+  caída de 2020 el peso se devaluó y CSPX en COP subió mientras ICOLCAP caía. Así que 25 % está por encima de la peor
+  caída histórica de la mezcla, aunque no de la de ICOLCAP solo.
 
 ### Simplificaciones propias del plan 4
 
-Las mismas del plan 3.
+- **Trinquete solo en las revisiones:** el máximo y la exposición se revisan cada $k$ meses. Una caída de más de
+  $\delta$ entre dos revisiones puede llevar los activos por debajo de $Z_\tau$ (el riesgo de salto de CPPI); nunca
+  por debajo del piso, porque la escalera no se toca.
+- **$\varphi$ y $\delta$ fijos:** no se ajustan con el tiempo ni con la volatilidad observada.
+- **Valor de los CDT vivos a su tasa de compra:** $V_\tau$ es el valor acumulado, no un precio de mercado (los CDT no se
+  venden antes de vencer).
+- Además, las mismas del plan 3.
 
 ## Referencias bibliográficas
 
 - Sharpe, W. F. y Tint, L. G. (1990). "Liabilities – A New Approach". *Journal of Portfolio Management*, invierno de
   1990, 5–10.
+- Estep, T. y Kritzman, M. (1988). "TIPP: Insurance without complexity". *Journal of Portfolio Management*, 14(4),
+  38–42.
 - Black, F. y Perold, A. F. (1992). "Theory of constant proportion portfolio insurance". *Journal of Economic Dynamics
   and Control*, 16(3–4), 403–426.
 - Martellini, L. y Milhau, V. (2012). "Dynamic allocation decisions in the presence of funding ratio constraints".
