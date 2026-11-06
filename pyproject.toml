@@ -9,6 +9,14 @@ description = "Investment strategy to fund a UVR-denominated loan."
 requires-python = ">=3.10"
 dependencies = ["numpy", "pandas", "pyyaml", "scipy", "truststore", "yfinance"]
 
+[project.scripts]
+uvr-amortization = "uvr_loan.amortization:main"
+uvr-download = "uvr_loan.data.sources:main"
+uvr-panel = "uvr_loan.data.cleaning:main"
+uvr-portfolio = "uvr_loan.portfolio:main"
+uvr-backtest = "uvr_loan.backtest:main"
+uvr-stress = "uvr_loan.stress:main"
+
 [dependency-groups]
 dev = ["ruff", "pytest", "pytest-cov", "matplotlib", "ipykernel", "nbconvert"]
 

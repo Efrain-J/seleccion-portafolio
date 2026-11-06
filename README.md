@@ -47,6 +47,17 @@ uv run pytest --cov=uvr_loan        # with coverage
 
 ## Usage
 
+Every step has a command registered in `pyproject.toml`, so `uv run <command>` is a shortcut for `uv run python -m <module>`:
+
+| Command | Module |
+|---|---|
+| `uvr-amortization` | `uvr_loan.amortization` |
+| `uvr-download` | `uvr_loan.data.sources` |
+| `uvr-panel` | `uvr_loan.data.cleaning` |
+| `uvr-portfolio` | `uvr_loan.portfolio` |
+| `uvr-backtest` | `uvr_loan.backtest` |
+| `uvr-stress` | `uvr_loan.stress` |
+
 Generate the loan payment schedule in UVR (month by month: balance, interest, installment, prepayment and total
 payment):
 
