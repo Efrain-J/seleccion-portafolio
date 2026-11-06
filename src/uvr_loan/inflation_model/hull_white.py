@@ -125,7 +125,7 @@ def simulate_hull_white(
         return -b_factor(t, maturity) * (2.0 * z_term(t) + b_factor(t, maturity) * zeta(t))
 
     dt = 1.0 / steps_per_year
-    n_steps = int(round(years * steps_per_year))
+    n_steps = round(years * steps_per_year)
     time_axis = np.linspace(dt, years, n_steps)
 
     # Today's curve at the step times (linear, flat outside the tenors) and its discount factors.
