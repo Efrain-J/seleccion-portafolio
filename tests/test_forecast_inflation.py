@@ -107,6 +107,23 @@ class TestForecastRuns:
         assert out["inflation_scenarios"]["forecast_stat"] == "p995_ea"
         assert case_cfg(cfg, "trailing")["inflation_scenarios"]["source"] == "trailing"
 
+    def test_decision_scenario_sets_the_scenario_of_every_plan(self, forecast_file):
+        cfg = forecast_cfg(forecast_file)
+        cfg["conservative"]["fic_sizing_scenario"] = "high"
+        cfg["cdt_ladder"]["deflator_scenario"] = "high"
+        cfg["ldi"]["floor_scenario"] = "high"
+        original = copy.deepcopy(cfg)
+        out = case_cfg(cfg, "median", decision_scenario="base")
+        assert cfg == original
+        assert out["conservative"]["fic_sizing_scenario"] == "base"
+        assert out["cdt_ladder"]["deflator_scenario"] == "base"
+        assert out["ldi"]["floor_scenario"] == "base"
+        assert case_cfg(cfg, "median")["ldi"]["floor_scenario"] == "high"  # unchanged by default
+
+    def test_unknown_decision_scenario_raises(self, forecast_file):
+        with pytest.raises(ValueError, match="decision_scenario"):
+            case_cfg(forecast_cfg(forecast_file), "median", decision_scenario="medium")
+
     def test_cases(self):
         assert list(CASES) == ["trailing", "median", "p995"]
 

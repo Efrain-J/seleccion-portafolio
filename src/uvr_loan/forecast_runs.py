@@ -32,12 +32,32 @@ CASES: dict[str, dict[str, str]] = {
 }
 
 
-def case_cfg(cfg: dict[str, Any], case: str, t0: str | None = None) -> dict[str, Any]:
-    """Copy of `cfg` with the inflation source of `case` (and `t0`, if given). The original is not modified."""
+# Config keys with the inflation scenario each plan decides with (all of them use `high` by default).
+DECISION_KEYS = [
+    ("conservative", "fic_sizing_scenario"),
+    ("cdt_ladder", "deflator_scenario"),
+    ("ldi", "floor_scenario"),
+]
+SCENARIOS = ("base", "high", "low")
+
+
+def case_cfg(
+    cfg: dict[str, Any], case: str, t0: str | None = None, decision_scenario: str | None = None
+) -> dict[str, Any]:
+    """Copy of `cfg` with the inflation source of `case`, `t0` and the scenario every plan decides with, if given.
+
+    `decision_scenario` (base, high or low) replaces the scenario of every plan (`DECISION_KEYS`); None keeps the
+    config. The original `cfg` is not modified.
+    """
+    if decision_scenario is not None and decision_scenario not in SCENARIOS:
+        raise ValueError(f"decision_scenario must be one of {SCENARIOS}, got {decision_scenario!r}")
     out = copy.deepcopy(cfg)
     if t0 is not None:
         out["backtest"]["t0"] = t0
     out["inflation_scenarios"].update(CASES[case])
+    if decision_scenario is not None:
+        for section, key in DECISION_KEYS:
+            out[section][key] = decision_scenario
     return out
 
 
@@ -69,12 +89,16 @@ def base_inflation_log(panel: pd.DataFrame, cfg: dict[str, Any]) -> pd.DataFrame
 
 
 def run_cases(
-    panel: pd.DataFrame, payment_schedule: pd.DataFrame, cfg: dict[str, Any], t0: str = T0
+    panel: pd.DataFrame,
+    payment_schedule: pd.DataFrame,
+    cfg: dict[str, Any],
+    t0: str = T0,
+    decision_scenario: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """For each case: `results` (plan -> monthly DataFrame), `summary` (metric x plan) and the `log` of base inflation."""
     out = {}
     for case in CASES:
-        c = case_cfg(cfg, case, t0)
+        c = case_cfg(cfg, case, t0, decision_scenario)
         results = {plan: run_backtest(panel, payment_schedule, c, plan) for plan in PLANS}
         out[case] = {
             "results": results,
@@ -94,13 +118,20 @@ def comparison(out: dict[str, dict[str, Any]]) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
+    import sys
+
     from uvr_loan.data.cleaning import load_monthly_panel, to_month_end
     from uvr_loan.data.sources import load_raw
+
+    # Optional argument: scenario every plan decides with (base, high, low); default = the config (high).
+    decision = sys.argv[1] if len(sys.argv) > 1 else None
+    if decision is not None:
+        OUT_DIR = OUT_DIR.with_name(f"{OUT_DIR.name}_{decision}")
 
     cfg = load_assumptions()
     panel = load_monthly_panel(case_cfg(cfg, "trailing", T0))
     panel = pad_uvr_history(panel, to_month_end(load_raw(cfg)["uvr_cop"]))
-    out = run_cases(panel, schedule(cfg["loan"]), cfg, T0)
+    out = run_cases(panel, schedule(cfg["loan"]), cfg, T0, decision)
 
     for case, v in out.items():
         folder = OUT_DIR / case
