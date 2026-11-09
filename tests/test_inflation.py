@@ -34,6 +34,7 @@ def test_trailing_inflation_needs_enough_history():
 
 
 def test_scenarios_use_the_trailing_base_and_config_shocks(cfg):
+    cfg = {**cfg, "inflation_scenarios": {**cfg["inflation_scenarios"], "source": "trailing"}}
     s = cfg["inflation_scenarios"]
     months = s["base_lookback_months"]
     uvr = pd.Series(100.0 * 1.01 ** np.arange(months + 1))  # 1 % per month

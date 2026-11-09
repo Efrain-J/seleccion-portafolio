@@ -89,23 +89,24 @@ $$
 En $\pi^{\text{base}}_\tau$, el 6 es `inflation_scenarios.base_lookback_months` (no $k$) y el exponente $12/6$ anualiza
 la inflación de esos 6 meses; en $\tau = 0$ usa la UVR de abr-2016, anterior a $t_0$.
 
-**Escenario de inflación de los planes.** Los planes deciden con $\pi_\tau = \pi^{\text{alto}}_\tau$, el escenario alto.
-Todos usan el mismo, para que sus resultados se puedan comparar. El código también calcula un escenario bajo, que
+**Escenario de inflación de los planes.** Los planes deciden con $\pi_\tau = \pi^{\text{base}}_\tau$, el escenario base (en el YAML, `fic_sizing_scenario`, `deflator_scenario`
+y `floor_scenario` valen `base`; antes valían `high`).
+Todos usan el mismo, para que sus resultados se puedan comparar. El código también calcula los escenarios alto y bajo, que
 ningún plan usa. Los tres escenarios dependen de `inflation_scenarios.source`:
 
-- **`trailing` (por defecto):** $\pi^{\text{alto}}_\tau = \pi^{\text{base}}_\tau + 0{,}03$, el margen para el riesgo de que la
+- **`trailing`:** $\pi^{\text{alto}}_\tau = \pi^{\text{base}}_\tau + 0{,}03$, el margen para el riesgo de que la
   inflación supere lo esperado, y $\pi^{\text{bajo}}_\tau = \pi^{\text{base}}_\tau - 0{,}015$ (`high_shock_pp`,
   `low_shock_pp`).
 - **`forecast`:** salen del pronóstico de inflación a 6 meses del modelo Hull-White (ver «Datos y supuestos de mercado»),
-  sin choques fijos: $\pi^{\text{bajo}}_\tau$ es su percentil 5, $\pi^{\text{base}}_\tau$ su mediana y
+  sin choques fijos (es el valor de la configuración): $\pi^{\text{bajo}}_\tau$ es su percentil 5, $\pi^{\text{base}}_\tau$ su mediana y
   $\pi^{\text{alto}}_\tau$ su percentil 99,5 (`inflation_scenarios.forecast_columns`).
 
 | Plan | $\pi_\tau$ | Para qué | YAML |
 |---|---|---|---|
-| 1 | $\pi^{\text{alto}}_\tau$ | Proyectar los pagos que guarda el FIC | `conservative.fic_sizing_scenario` |
-| 2 | $\pi^{\text{alto}}_\tau$ | Pasar las tasas nominales a reales en el LP | `cdt_ladder.deflator_scenario` |
-| 3 | $\pi^{\text{alto}}_\tau$ | Calcular el piso y comprar la escalera | `ldi.floor_scenario` |
-| 4 | $\pi^{\text{alto}}_\tau$ | Igual que el plan 3 | `ldi.floor_scenario` |
+| 1 | $\pi^{\text{base}}_\tau$ | Proyectar los pagos que guarda el FIC | `conservative.fic_sizing_scenario` |
+| 2 | $\pi^{\text{base}}_\tau$ | Pasar las tasas nominales a reales en el LP | `cdt_ladder.deflator_scenario` |
+| 3 | $\pi^{\text{base}}_\tau$ | Calcular el piso y comprar la escalera | `ldi.floor_scenario` |
+| 4 | $\pi^{\text{base}}_\tau$ | Igual que el plan 3 | `ldi.floor_scenario` |
 
 Nota: el test `test_plans_use_the_same_inflation_scenario` (`tests/test_inflation.py`) avisa si las tres claves del
 YAML difieren.
@@ -147,11 +148,11 @@ $$
 
 ### Datos y supuestos de mercado
 
-- **Inflación proyectada, fuente por defecto (S14):** la base es la inflación de los últimos 6 meses medida con la UVR
-  ($\pi^{\text{base}}_\tau$), con alto = base + 3 p.p. y bajo = base − 1,5 p.p. Es un modelo provisional (`scenarios` en
+- **Inflación proyectada, fuente `trailing` (S14):** la base es la inflación de los últimos 6 meses medida con la UVR
+  ($\pi^{\text{base}}_\tau$), con alto = base + 3 p.p. y bajo = base − 1,5 p.p. Es un modelo provisional, que ya no es el valor de la configuración (`scenarios` en
   `src/uvr_loan/inflation.py`). Con 6 meses esa base tiene estacionalidad: en abril ve los meses de inflación alta de
   comienzo de año y en octubre los de inflación baja.
-- **Inflación proyectada, pronóstico Hull-White (`inflation_scenarios.source: forecast`, explicado en
+- **Inflación proyectada, pronóstico Hull-White (`inflation_scenarios.source: forecast`, el valor actual de la configuración, explicado en
   [`modelo_inflacion.md`](modelo_inflacion.md)):** el modelo de
   `src/uvr_loan/inflation_model/` simula la inflación implícita entre los TES en pesos y los TES en UVR (curvas
   Nelson-Siegel del Banco de la República) y pronostica la inflación de los próximos 6 meses al cierre de cada mes. La
@@ -161,7 +162,7 @@ $$
   la inflación implícita a 1 año, solo con información hasta ese cierre. Las columnas que son cada escenario están en
   `inflation_scenarios.forecast_columns`. Se regenera con `python -m uvr_loan.inflation_model.forecast` (necesita las betas
   de `data/raw/`, ver `data/SOURCES.md`). Cada escenario se usa como una inflación anual constante durante todo el
-  plazo que falta, igual que la base por defecto; no es un pronóstico a 10 años.
+  plazo que falta, igual que la base de `trailing`; no es un pronóstico a 10 años.
 - **FIC:** rinde lo que rindió un índice de los FIC de mercado monetario reales: el valor de la unidad de cada fondo,
   publicado a diario por la Superfinanciera, promediado según el tamaño de cada fondo. Ver `data/SOURCES.md`.
 - **Venta inmediata, sin deslizamiento (S16):** cualquier ETF se vende al precio de cierre del mes en que se necesita
@@ -214,8 +215,8 @@ $$
 N_\tau = \sum_{m=\tau+1}^{\tau+k-1} P_m\,\widehat{\text{UVR}}_{m\mid\tau}
 $$
 
-con la UVR proyectada con $\pi_\tau = \pi^{\text{alto}}_\tau$ (`conservative.fic_sizing_scenario`, ver la notación
-común; en oct-2016, 4,34 % + 3 p.p. = 7,34 %).
+con la UVR proyectada con $\pi_\tau = \pi^{\text{base}}_\tau$ (`conservative.fic_sizing_scenario`, ver la notación
+común; en oct-2016, la mediana del pronóstico era 8,43 %).
 
 **Paso 3: repartir $W_\tau$.**
 
@@ -253,9 +254,9 @@ Así el FIC se ajusta a los pagos que vienen y el CDT vuelve a ser el 90 % del r
 
 ### Riesgo y resultados
 
-- Sin meses con déficit y riqueza final de 701,0M.
+- Sin meses con déficit y riqueza final de 701,1M.
 - El 10 % que queda en el FIC además de $N_\tau$ funciona como colchón: el saldo mínimo del FIC en un mes de pago fue
-  71,8M. A cambio, ese dinero rinde lo del FIC y no lo del CDT.
+  71,3M. A cambio, ese dinero rinde lo del FIC y no lo del CDT.
 
 ### Simplificaciones propias del plan 1
 
@@ -313,7 +314,7 @@ realidad (ver paso 2).
 En cada revisión se resuelve un LP que reparte el dinero libre entre el FIC y CDT a 3, 6 y 12 meses, de modo que los
 CDT venzan cuando llegan los pagos y quede la mayor cantidad posible de dinero al final del crédito. Como los CDT y el
 FIC pagan en pesos y el LP trabaja en UVR, necesita su rendimiento en UVR, que no se conoce de antemano: usa el
-**esperado**, $\tilde r_j(\tau)$ y $\rho_\tau$, con $\pi_\tau = \pi^{\text{alto}}_\tau$
+**esperado**, $\tilde r_j(\tau)$ y $\rho_\tau$, con $\pi_\tau = \pi^{\text{base}}_\tau$
 (`cdt_ladder.deflator_scenario`).
 
 **Datos y variables del LP.**
@@ -391,8 +392,8 @@ caso.
 
 | Revisión | Dinero libre | FIC | CDT 3 meses | CDT 6 meses | CDT 12 meses |
 |---|---|---|---|---|---|
-| oct-2016 (gracia) | 760,0M | 0 | 0 | 198,4M | 561,6M |
-| oct-2019 (antes de la primera cuota) | 678,8M | 11,0M | 16,6M | 4,5M | 646,6M |
+| oct-2016 (gracia) | 760,0M | 0 | 0 | 212,2M | 547,8M |
+| oct-2019 (antes de la primera cuota) | 713,1M | 11,0M | 16,6M | 41,3M | 644,1M |
 
 En oct-2016 las tasas eran 6,99 % (90 días), 7,24 % (180) y 8,18 % (360): sin pagos durante la gracia, casi todo va al
 plazo más largo. En oct-2019 el dinero libre es menor que la riqueza total porque hay CDT comprados antes que siguen
@@ -401,10 +402,12 @@ vivos.
 ### Riesgo y resultados
 
 - Los CDT son de tasa fija: si la inflación supera la esperada, los pagos en COP crecen más que el dinero.
-- El backtest tiene 2 meses con déficit, ambos muy pequeños: jun-2021 (38.611 COP) y jun-2022
-  (9.503 COP), 48.114 COP en total.
+- El backtest tiene 9 meses con déficit, todos muy pequeños: jun-2021 (120.768 COP), sep-2021 (329.500), jun-2022
+  (143.792), sep-2022 (330.319), jun-2023 (48.440), jun-2024 (25.618), sep-2024 (85.136), jun-2025 (65.258) y
+  sep-2025 (95.090), 1.243.920 COP en total. Con el escenario alto eran 2 meses y 48.114 COP: con la inflación base
+  la escalera queda más justa.
 - En abr-2026 no hubo escalera posible y el dinero quedó en el FIC.
-- La riqueza final es 780,1M y la riqueza neta también es 780,1M: los 48.114 COP de déficit no se ven al redondear.
+- La riqueza final es 779,6M y la riqueza neta 778,4M (se restan los 1,24M de déficit).
 
 ### Simplificaciones propias del plan 2
 
@@ -421,7 +424,7 @@ vivos.
 ### Validación del pronóstico de la caja
 
 Evaluado contra lo que pasó en los 6 meses siguientes a cada revisión (error = pronóstico − realizado; corrida por
-defecto, con la inflación reciente):
+defecto de entonces: inflación reciente y escenario alto, sin recalcular con `forecast` ni `base`):
 
 - acierta en 17 de 20 revisiones cuál rinde más, la caja o el CDT a 180 días. Falla en abr-2020 (prácticamente un
   empate) y en abr-2022 y oct-2022, cuando el BanRep subía tasas y el FIC, que sigue las tasas mes a mes, le ganó a
@@ -446,7 +449,7 @@ Es un plan de inversión guiada por los pasivos (*liability-driven investment*, 
    protección.
 
 Los ETF solo reciben dinero que sobra sobre la protección. Por eso, aunque los ETF perdieran el 100 %, la escalera
-seguiría cubriendo los pagos, mientras la inflación no supere el escenario alto con el que se calcula. Es la forma más simple de la regla CPPI (*constant proportion portfolio insurance*),
+seguiría cubriendo los pagos, mientras la inflación no supere el escenario de decisión con el que se calcula (hoy `base`; con `high` el margen es mayor). Es la forma más simple de la regla CPPI (*constant proportion portfolio insurance*),
 con multiplicador $\kappa = 1$.
 
 ### Instrumentos
@@ -486,7 +489,7 @@ a 3, 6 y 12 meses más el FIC, cubre **todos** los pagos que faltan hasta el fin
 lineal (LP) en UVR, la unidad del crédito:
 
 - Usa las tasas de CDT de hoy y el rendimiento del FIC, pasados a rendimientos reales ($\tilde r_j(\tau)$ y
-  $\rho_\tau$) con el escenario de inflación **alto**, $\pi^{\text{alto}}_\tau$ (`ldi.floor_scenario`).
+  $\rho_\tau$) con el escenario de inflación **base**, $\pi^{\text{base}}_\tau$ (`ldi.floor_scenario`).
 - Los CDT comprados en revisiones anteriores que todavía no vencen cuentan como dinero ya reservado: el piso solo
   cubre lo que ellos no cubren.
 
@@ -505,7 +508,7 @@ El piso es lo que de verdad costaría la escalera, así que no hace falta supone
 
 **Paso 2: comprar la escalera.** La escalera recibe $\min\bigl(W_\tau,\ (1 + b)\,\Pi_\tau\bigr)$: normalmente
 $(1 + b)\,\Pi_\tau$, el piso más un margen $b$ = 5 %. Con ese presupuesto se resuelve el LP del plan 2
-(`ladder_purchases`, mismas tasas del escenario alto). No basta con comprar la solución del LP del piso, porque esa
+(`ladder_purchases`, mismas tasas del escenario base). No basta con comprar la solución del LP del piso, porque esa
 solución gasta exactamente $\Pi_\tau$: el margen también hay que invertirlo, y el LP del plan 2 decide cómo se reparte
 todo el presupuesto, margen incluido, entre los plazos de CDT y el FIC (una parte pequeña queda en el FIC para los
 meses entre vencimientos). $W_\tau$ no incluye los CDT vivos: ellos ya están descontados del piso como vencimientos
@@ -551,27 +554,27 @@ los datos reales esto no pasó.
 
 | Revisión | $W_\tau$ | Piso $\Pi_\tau$ (COP) | $\text{FR}_\tau$ | Escalera (CDT + FIC) | ICOLCAP | CSPX |
 |---|---|---|---|---|---|---|
-| oct-2016 | 760,0M | 419,9M | 1,81 | 440,9M | 161,2M | 157,9M |
-| oct-2019 | 755,4M | 261,9M | 1,96 | 275,0M | 233,4M | 246,9M |
+| oct-2016 | 760,0M | 447,8M | 1,70 | 470,2M | 146,4M | 143,4M |
+| oct-2019 | 882,5M | 389,7M | 1,96 | 409,1M | 230,1M | 243,4M |
 
-En oct-2016 la inflación alta era 7,34 % (4,34 % + 3 p.p.); la escalera compró 198,4M en CDT a 6 meses (7,24 %) y
-242,5M a 12 meses (8,18 %). Las volatilidades eran 17,7 % (ICOLCAP) y 18,0 % (CSPX), así que los pesos quedaron casi
+En oct-2016 la inflación base (la mediana del pronóstico) era 8,43 %; la escalera compró 212,2M en CDT a 6 meses (7,24 %) y
+258,0M a 12 meses (8,18 %). Las volatilidades eran 17,7 % (ICOLCAP) y 18,0 % (CSPX), así que los pesos quedaron casi
 iguales (50,5 % y 49,5 %). En oct-2019 $W_\tau$ no incluye los CDT comprados antes que siguen vivos (su valor más el de
-la escalera nueva suma 513,6M en CDT y 11,0M en el FIC); por eso el piso es menor que en 2016 aunque faltan los mismos
+la escalera nueva suma 523,1M en CDT y 11,0M en el FIC); por eso el piso es menor que en 2016 aunque faltan los mismos
 pagos. $\text{FR}_\tau$ es el indicador de cobertura (ver el final de "Riesgo y resultados").
 
 ### Riesgo y resultados
 
-- Sin meses con déficit. Dos veces el FIC quedó corto por muy poco y se vendieron ETF: jun-2021 (41.468 COP) y jun-2022
-  (9.651 COP).
+- Sin meses con déficit. Nueve veces el FIC quedó corto por poco y se vendieron ETF (1.243.885 COP en total): jun-2021,
+  sep-2021, jun-2022, sep-2022, jun-2023, jun-2024, sep-2024, jun-2025 y sep-2025, los mismos meses del déficit del plan 2.
 - La protección de los pagos la comprueba un test: los ETF pierden 99 % y no falta ningún pago
   (`test_a_crash_of_the_etfs_does_not_reach_the_payments`).
-- Riqueza final 1.352,5M (plan 1: 701,0M; plan 2: 780,1M). Rentabilidad anual 11,9 %, volatilidad 8,3 %, máxima caída
+- Riqueza final 1.352,7M (plan 1: 701,1M; plan 2: 779,6M). Rentabilidad anual 11,9 %, volatilidad 8,5 %, máxima caída
   7,1 % (los planes 1 y 2 tienen volatilidad cercana a 1 % y no tienen caídas).
 - La protección de los pagos no depende del mercado accionario (siempre está la escalera con $(1 + b)$ × piso); la
   riqueza final sí.
 - **El riesgo no entra en la decisión.** Todo lo que sobra sobre el piso va a los ETF, sin un tope y sin mirar cómo
-  van: la parte en ETF sube de 42 % del dinero en oct-2016 a 96 % en abr-2026. La regla protege el pago de las
+  van: la parte en ETF sube de 38 % del dinero en oct-2016 a 97 % en abr-2026. La regla protege el pago de las
   cuotas, no la riqueza. El [plan 4](#plan-4--ldi-con-trinquete-tipp) agrega una regla que protege parte de la
   riqueza.
 
@@ -580,7 +583,7 @@ indicador de cobertura del portafolio completo es
 $\text{FR}_\tau = (W_\tau + V_\tau) / (\Pi_\tau + V_\tau)$ (columna `funding_ratio_total`). Suma el valor de los CDT vivos
 arriba y abajo: así no salta cuando hay CDT vivos (el piso del dinero libre baja porque ellos cubren parte de los
 pagos, e incluso llega a 0 cuando los cubren todos) y no divide por cero mientras queden pagos. Con $k = 6$ su menor
-valor fue 1,64 (abr-2017) y sube a medida que se pagan las cuotas: 2,30 en oct-2020, 3,77 en oct-2023 y 25,7 en
+valor fue 1,70 (oct-2016) y sube a medida que se pagan las cuotas: 2,14 en oct-2020, 3,75 en oct-2023 y 25,6 en
 abr-2026.
 
 ### Simplificaciones propias del plan 3
@@ -626,7 +629,7 @@ de CDT (los pasivos se recalculan en cada revisión con las tasas del día) y la
 esperada (el FIC y los CDT pagan en pesos).
 
 **Por qué no el indicador de cobertura $\text{FR}_\tau$:** sube solo a medida que se pagan las cuotas (en el plan 3
-llega a 25,7), así que un trinquete sobre él protegería cada vez más sin una razón de mercado.
+llega a 25,6), así que un trinquete sobre él protegería cada vez más sin una razón de mercado.
 
 ### Instrumentos
 
@@ -684,7 +687,7 @@ del plan 2 decide los CDT; $G_\tau$ se reparte entre los ETF por volatilidad inv
 
 - **En un máximo** ($S_\tau = S^{\max}_\tau$, con el excedente positivo) el colchón es $(1 - \varphi)\,S_\tau$ y los ETF
   reciben $\kappa\,(1 - \varphi)\,S_\tau = (1 - \varphi)/\delta \cdot S_\tau = 0{,}20 / 0{,}25 \cdot S_\tau = 0{,}80\,S_\tau$,
-  o el tope del plan 3 si es menor. Es decir, **no más que el plan 3**: menos cuando el tope no manda (oct-2016 en los
+  o el tope del plan 3 si es menor. Es decir, **no más que el plan 3**: menos cuando el tope no manda (oct-2016 y oct-2019 en los
   ejemplos), igual cuando manda (abr-2026). El 80 % no es una meta: sale de los dos parámetros. Si se quisiera que en un
   máximo el plan 4 tuviera lo mismo que el plan 3, haría falta $\varphi = 1 - \delta$.
 - **Después de una caída** del excedente de $x$ desde el máximo, el colchón baja $x$ y los ETF bajan $\kappa\,x$: con
@@ -693,8 +696,8 @@ del plan 2 decide los CDT; $G_\tau$ se reparte entre los ETF por volatilidad inv
   $A_\tau + V_\tau - L_\tau \ge A_\tau - (1 + b)\,B^{\min}_\tau$, es decir, que los CDT vivos valgan al menos lo que
   cubren del piso (descontando el margen). Se cumple en los datos de prueba
   (`test_ratchet_without_protection_and_with_m_1_is_plan_3`).
-- **El costo de la protección:** menos ETF cuando el mercado sube. Con los datos reales el plan 4 termina con 127,7M
-  menos que el plan 3, con una volatilidad y una máxima caída cerca de 25 % menores.
+- **El costo de la protección:** menos ETF cuando el mercado sube. Con los datos reales el plan 4 termina con 291,3M
+  menos que el plan 3, con una volatilidad 34 % menor y una máxima caída 24 % menor.
 
 ### Entre revisiones (cada mes)
 
@@ -706,24 +709,24 @@ Millones de COP ($A$, $V$, $L$, $S$ y $Z$ pasados a COP con la UVR de la revisi�
 
 | Revisión | $A$ | $V$ | $L$ | $S$ | $S^{\max}$ | $Z$ | ETF plan 4 ($G$) | ETF que tendría el plan 3 |
 |---|---|---|---|---|---|---|---|---|
-| oct-2016 | 760,0 | 0,0 | 419,9 | 340,1 | 340,1 | 692,0 | 272,1 (36 %) | 319,1 |
-| oct-2019 | 730,3 | 249,6 | 512,4 | 467,5 | 467,5 | 886,4 | 374,0 (51 %) | 455,3 |
-| abr-2020 | 602,8 | 337,0 | 491,8 | 448,0 | 477,0 | 873,4 | 265,6 (44 %) | 440,5 |
-| abr-2026 | 982,3 | 241,7 | 49,9 | 1.174,2 | 1.174,2 | 989,2 | 938,7 (96 %) | 938,7 |
+| oct-2016 | 760,0 | 0,0 | 447,8 | 312,2 | 312,2 | 697,6 | 249,7 (33 %) | 289,8 |
+| oct-2019 | 951,4 | 0,0 | 515,1 | 436,3 | 507,0 | 920,7 | 122,6 (13 %) | 410,5 |
+| abr-2020 | 360,3 | 570,7 | 403,9 | 527,0 | 527,0 | 825,6 | 331,1 (92 %) | 331,1 |
+| abr-2026 | 852,6 | 211,5 | 49,2 | 1.014,9 | 1.014,9 | 861,1 | 809,5 (95 %) | 809,5 |
 
-En oct-2016 el plan 4 pone 272,1M en ETF en vez de 319,1M: es el $0{,}80\,S$ de un máximo, con el tope del plan 3
-por encima. En abr-2020 (después de la caída de marzo) el excedente estaba 6 % por debajo de su máximo y los ETF
-bajaron a 60 % de lo que tendría el plan 3. En abr-2026 el excedente es grande frente a los pasivos que quedan y el
-tope (lo del plan 3) es el que manda.
+En oct-2016 el plan 4 pone 249,7M en ETF en vez de 289,8M: es el $0{,}80\,S$ de un máximo, con el tope del plan 3
+por encima. En oct-2019 el excedente estaba 14 % por debajo de su máximo (436,3M frente a 507,0M) y los ETF bajaron a
+30 % de lo que tendría el plan 3. En abr-2020 y abr-2026 el excedente está en su máximo y es grande frente a los
+pasivos que quedan, así que manda el tope (lo del plan 3).
 
 ### Riesgo y resultados
 
-- Sin meses con déficit. Dos veces el FIC quedó corto por muy poco y se vendieron ETF, como en el plan 3: jun-2021 y
-  jun-2022 (50.399 COP en total). La menor liquidez (FIC + ETF) en un mes de pago fue 305,6M.
-- Riqueza final 1.224,8M (plan 3: 1.352,5M). Rentabilidad anual 11,2 %, volatilidad 6,2 %, máxima caída 5,5 % (plan 3:
-  11,9 %, 8,3 % y 7,1 %).
+- Sin meses con déficit. Nueve veces el FIC quedó corto por poco y se vendieron ETF, como en el plan 3 (1.243.895 COP en
+  total). La menor liquidez (FIC + ETF) en un mes de pago fue 109,3M (plan 3: 421,2M).
+- Riqueza final 1.061,4M (plan 3: 1.352,7M). Rentabilidad anual 10,1 %, volatilidad 5,7 %, máxima caída 5,4 % (plan 3:
+  11,9 %, 8,5 % y 7,1 %).
 - **El trinquete cambia rentabilidad por estabilidad:** con estos datos, en que las acciones subieron, deja de ganar
-  127,7M frente al plan 3. En los escenarios sintéticos (`python -m uvr_loan.synthetic`) se compara en caminos que
+  291,3M frente al plan 3. En los escenarios sintéticos (`python -m uvr_loan.synthetic`) se compara en caminos que
   suben, bajan y oscilan.
 - La parte en ETF depende de cuánto excedente hay y de cuánto se ha perdido desde el máximo, no de una señal de
   precios.

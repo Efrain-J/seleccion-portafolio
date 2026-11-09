@@ -19,7 +19,7 @@ backtest:
   review_sensitivity_months: [3, 6, 12]
 
 inflation_scenarios:
-  source: trailing             # trailing: base = trailing UVR inflation, high/low = base + shock; forecast: the three come from the forecast file
+  source: forecast             # trailing: base = trailing UVR inflation, high/low = base + shock; forecast: the three come from the forecast file
   base_lookback_months: 6      # S14, trailing source only: base = annualized UVR inflation of the last 6 months (provisional)
   high_shock_pp: 3.0           # trailing source only: high = base + 3 pp
   low_shock_pp: -1.5           # trailing source only: low = base - 1.5 pp
@@ -32,7 +32,7 @@ inflation_scenarios:
 conservative:                  # Plan 1: FIC (liquidity + a share of the rest) + CDT; no ETF
   cdt_weight: 0.90             # share of the money left after the liquidity that goes to the CDT (the rest stays in the FIC)
   grace_cdt_weight: 1.0        # cdt_weight at the reviews of the grace period (no payments yet)
-  fic_sizing_scenario: high    # inflation scenario used to size the FIC
+  fic_sizing_scenario: base    # inflation scenario used to size the FIC
 
 data:
   start: "2016-01-01"          # first day of the FIC data (Superfinanciera)
@@ -54,14 +54,14 @@ data:
     max_daily_change: 0.05     # fund-days with a larger change (or a unit value <= 0) are logged and excluded
 
 cdt_ladder:                    # Plan 2: ladder of fixed-rate CDTs chosen with an LP in UVR
-  deflator_scenario: high      # inflation that turns nominal rates (CDT and FIC) into expected real ones
+  deflator_scenario: base      # inflation that turns nominal rates (CDT and FIC) into expected real ones
   term_columns:                # CDT term in months: panel column with its rate
     3: cdt_90d_ea
     6: cdt_180d_ea
     12: cdt_360d_ea
 
 ldi:                           # Plan 3: CDT ladder up to the floor (x 1.05), ETFs with the rest (CPPI with m = 1)
-  floor_scenario: high         # inflation of the floor and of the ladder bought with it
+  floor_scenario: base         # inflation of the floor and of the ladder bought with it
   floor_buffer: 0.05           # the ladder gets (1 + buffer) x floor; the rest of the free money goes to the ETFs
   growth_assets: [icolcap, cspx]   # names in data.etfs; split by inverse volatility (data.vol_window_months)
 

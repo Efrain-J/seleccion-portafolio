@@ -98,24 +98,24 @@ Print the conservative allocation (Plan 1) at t0:
 uv run python -m uvr_loan.portfolio
 ```
 
-Plan 1 (fixed income only) keeps in the FIC the payments due before its new CDT matures (high inflation scenario; the
+Plan 1 (fixed income only) keeps in the FIC the payments due before its new CDT matures (base inflation scenario; the
 CDT pays the payment of the month it matures), puts `conservative.cdt_weight` of the rest in a CDT that matures at the
 next review, and leaves the remainder in the FIC; during the grace period everything goes to the CDT
 (`grace_cdt_weight`). Every
 parameter (t0, review frequency, CDT weight, inflation scenarios, data series) is read from
 `config/assumptions.yaml`. Plan 2 (CDT ladder) buys fixed-rate CDTs of 3, 6 and 12 months chosen with a linear
 program in UVR that covers every remaining payment and maximizes the final wealth; the decision uses expected real
-returns (deflated with the high inflation scenario, like plans 1 and 3), and the results use the observed CDT rates. Plan 3 (LDI) computes a floor, the smallest budget of that same
-LP that covers every remaining payment under high inflation, gives the CDT ladder 1.05 × floor and puts the rest in
+returns (deflated with the base inflation scenario, like plans 1 and 3), and the results use the observed CDT rates. Plan 3 (LDI) computes a floor, the smallest budget of that same
+LP that covers every remaining payment under base inflation, gives the CDT ladder 1.05 × floor and puts the rest in
 ICOLCAP and CSPX, split by inverse volatility (CPPI with multiplier 1: a fall of the ETFs never reaches the money for
 the payments). Plan 4 (`ratchet_ldi`) is plan 3 with a ratchet (TIPP): it protects `protected_share` (80 %) of
 the highest real surplus reached at a review (assets − cost of covering every remaining payment, in UVR), puts
 (assets − protected level) / `max_fall` in the ETFs (never more than plan 3), and buys more CDTs with the rest.
 Every reported peso comes from observed data. The inflation scenarios of the plans come from
-`inflation_scenarios.source`: by default (`trailing`) the base is the UVR inflation of the last
-`base_lookback_months` months known at each review, and high and low add `high_shock_pp` and `low_shock_pp`; with
-`forecast`, low, base and high are the 5th percentile, the median and the 99.5th percentile of the Hull-White
-inflation forecast (see below). The full rules, with notation, examples and simplifications, are in
+`inflation_scenarios.source`: with `forecast` (the value in the config) low, base and high are the 5th percentile,
+the median and the 99.5th percentile of the Hull-White inflation forecast (see below); with `trailing` the base is the
+UVR inflation of the last `base_lookback_months` months known at each review, and high and low add `high_shock_pp`
+and `low_shock_pp`. The full rules, with notation, examples and simplifications, are in
 [`docs/reglas_de_inversion.md`](docs/reglas_de_inversion.md).
 
 Run the dynamic backtest of every plan from t0 to the end of the horizon (reviews every `review_every_months` months):
@@ -175,12 +175,12 @@ Run every plan with those scenarios instead of the trailing UVR inflation (`infl
 (`median_ea`) and the 99.5th percentile (`p995_ea`) of the 6-month inflation forecast (effective annual, decimal), made
 only with information up to that close. With `source: forecast` the scenarios are those three columns
 (`inflation_scenarios.forecast_columns`): **low = p05, base = median, high = p99.5**, with no fixed shocks. With
-`source: trailing` (the default) the base is the trailing UVR inflation and high and low add `high_shock_pp` and
+`source: trailing` the base is the trailing UVR inflation and high and low add `high_shock_pp` and
 `low_shock_pp`.
 
 The runner starts in May 2016 (the panel is complete from then on) and runs two cases: `trailing` (baseline) and
-`forecast`. The optional argument is the scenario every plan decides with (default: the config, `high`, which is the
-p99.5 in the `forecast` case; `base` is the median). It writes `results/forecast_runs[_<scenario>]/<case>/`
+`forecast`. The optional argument is the scenario every plan decides with (default: the config, `base`, which is the
+median in the `forecast` case; `high` is the p99.5). It writes `results/forecast_runs[_<scenario>]/<case>/`
 (`backtest_<plan>.csv`, `summary.csv`, `base_inflation.csv`: low, base and high at each review next to the realized UVR
 inflation of the next 6 months) and `comparison.csv` (one row per plan and case). Each scenario is used as a constant
 annual inflation for the whole remaining horizon, like the trailing base.

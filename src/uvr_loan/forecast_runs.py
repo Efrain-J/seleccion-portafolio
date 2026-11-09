@@ -8,7 +8,7 @@ The runs start in `T0` (May 2016) because the panel is complete from then on: th
 and the ICOLCAP volatility needs 36 months of returns since its listing in May 2013.
 
 Run `python -m uvr_loan.forecast_runs [base|high|low]` to write the results to results/forecast_runs[_<scenario>]/;
-the argument is the scenario every plan decides with (default: the one in the config, `high`).
+the argument is the scenario every plan decides with (default: the one in the config, `base`).
 """
 
 import copy
@@ -40,7 +40,7 @@ CASES: dict[str, dict[str, str]] = {
 }
 
 
-# Config keys with the inflation scenario each plan decides with (all of them use `high` by default).
+# Config keys with the inflation scenario each plan decides with (all of them use `base` by default).
 DECISION_KEYS = [
     ("conservative", "fic_sizing_scenario"),
     ("cdt_ladder", "deflator_scenario"),
@@ -135,7 +135,7 @@ if __name__ == "__main__":
     from uvr_loan.data.cleaning import load_monthly_panel, to_month_end
     from uvr_loan.data.sources import load_raw
 
-    # Optional argument: scenario every plan decides with (base, high, low); default = the config (high).
+    # Optional argument: scenario every plan decides with (base, high, low); default = the config (base).
     decision = sys.argv[1] if len(sys.argv) > 1 else None
     OUT_DIR = output_dir(decision)
 
