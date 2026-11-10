@@ -1,0 +1,471 @@
+\documentclass[11pt]{article}
+\usepackage{iftex}
+\usepackage{graphicx}
+\usepackage[spanish]{babel}
+\spanishdecimal{.}
+\usepackage{amsmath, mathtools}
+\ifXeTeX
+  \usepackage{fontspec}
+  \usepackage{unicode-math}
+  \setmainfont{texgyretermes}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+  \setmathfont{texgyretermes-math.otf}
+\else
+  \usepackage[utf8]{inputenc}
+  \usepackage{mathptmx, mathrsfs, amssymb}
+\fi
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage[margin=2.5cm]{geometry}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+\renewcommand{\arraystretch}{1.15}
+
+\newcommand{\pc}{\text{\%}}
+\newcommand{\caja}[1]{\par\smallskip\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{#1}}\par\smallskip}
+
+\begin{document}
+
+\begin{titlepage}
+   \begingroup\centering
+      {\LARGE \textbf{Universidad EAFIT}\par}
+      \vspace{1cm}
+      {\Large Escuela de Ciencias Aplicadas e Ingeniería\par}
+      \vspace{3cm}
+      {\Huge \textbf{Trabajo final de Matemáticas Financieras}\par}
+      \vspace{3cm}
+      {\Large Docente:  José Julián Vázquez Jiménez\par}
+      \vfill
+      {\Large Autor: Efrain Jurado Torres, Edy Julius López Rojas $\&$ Juan Pablo Castaño Morales\par}
+      \vfill
+      {\Large 2026 \par}
+
+   \endgroup
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+%=====================================================================
+\section{Introducci\'on}
+%=====================================================================
+
+Este documento explica, paso a paso, la soluci\'on de los Ejercicios 5 y 6 del trabajo final. Los dos ejercicios comparten una misma idea de fondo: \emph{una tasa de inter\'es solo se puede comparar con otra cuando ambas est\'an expresadas en la misma moneda}. Cuando una inversi\'on o una deuda se pacta en una moneda y quien la lleva mide sus resultados en otra, hay que incorporar la variaci\'on del tipo de cambio.
+
+\begin{itemize}
+\item \textbf{Ejercicio 5.} ¿Cu\'anto rindi\'o, \emph{en francos suizos}, una inversi\'on cuyo rendimiento se pact\'o en reales brasile\~nos?
+\item \textbf{Ejercicio 6.} ¿Cu\'anto cuesta, \emph{en pesos mexicanos}, cada uno de tres pr\'estamos pactados en monedas distintas?
+\end{itemize}
+
+Para cada ejercicio se presenta el enunciado, la idea de la soluci\'on, las variables, el desarrollo paso a paso, una verificaci\'on y la respuesta.
+
+\subsection*{Convenciones}
+
+\begin{itemize}
+\item Los decimales se escriben con punto y los miles con coma: por ejemplo, $2{,}000{,}000$ y $4.19$.
+\item Un tipo de cambio ``$A/B$'' se expresa en unidades de $A$ por una unidad de $B$. Por ejemplo, $\text{BRL/CHF}=4.19$ significa que $1$ CHF equivale a $4.19$ BRL.
+\end{itemize}
+
+%=====================================================================
+\section{Ejercicio 5: rentabilidad en francos suizos de una inversi\'on en Brasil}
+%=====================================================================
+
+\subsection{Enunciado}
+
+\caja{La empresa relojera Kronos invirti\'o hace 3 a\~nos $2{,}000{,}000$ de francos suizos (CHF) en una subsidiaria en Brasil. La tasa de rendimiento de la inversi\'on en reales brasile\~nos (BRL) es del $16\,\pc$ ASV (anual semestre vencido). Calcule la rentabilidad anual efectiva en francos suizos y la cantidad de francos suizos obtenidos al final del tercer a\~no.}
+
+\subsection{Idea de la soluci\'on}
+
+La tasa del $16\,\pc$ solo describe lo que pas\'o con el dinero \emph{mientras estuvo en reales}. Kronos puso CHF y recibe CHF, as\'i que hay que seguir el dinero por cuatro etapas:
+
+\begin{enumerate}
+\item \textbf{Convertir CHF a BRL} con el tipo de cambio vigente cuando se hizo la inversi\'on (hace 3 a\~nos).
+\item \textbf{Hacer crecer los BRL} durante 3 a\~nos con la tasa de rendimiento. Como la tasa es nominal con pago semestral, primero se pasa a tasa efectiva anual.
+\item \textbf{Convertir los BRL de vuelta a CHF} con el tipo de cambio de hoy (final del tercer a\~no).
+\item \textbf{Calcular la tasa efectiva anual en CHF} comparando los CHF finales con los CHF iniciales.
+\end{enumerate}
+
+El tipo de cambio BRL/CHF cambi\'o durante los 3 a\~nos, y ese cambio es lo que hace que la rentabilidad en CHF sea distinta del rendimiento en BRL.
+
+\subsection{Variables y datos}
+
+\begin{center}
+\begin{tabular}{l l r}\toprule
+Variable & Significado & Valor\\\midrule
+$V_{\text{CHF}}$ & Valor invertido en francos suizos & $2{,}000{,}000$ CHF\\
+$j$ & Tasa nominal anual semestre vencido (en BRL) & $16\,\pc$\\
+$m$ & Periodos de capitalizaci\'on por a\~no (semestres) & $2$\\
+$n$ & Duraci\'on de la inversi\'on & $3$ a\~nos\\
+$a_0,\ b_0$ & CHF/USD y BRL/USD al inicio de la inversi\'on & $0.9687$ y $4.06275$\\
+$a_3,\ b_3$ & CHF/USD y BRL/USD actuales (final del a\~no 3) & $0.92447$ y $5.32004$\\\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Desarrollo paso a paso}
+
+\subsubsection*{Paso 1: tipo de cambio BRL/CHF al inicio}
+
+El enunciado da las monedas contra el d\'olar estadounidense (USD), que act\'ua como moneda puente. Para saber cu\'antos BRL vale 1 CHF se divide el valor de 1 USD en BRL entre el valor de 1 USD en CHF. Esto se llama \emph{tipo de cambio cruzado}:
+
+\[
+X_0=\frac{b_0}{a_0}=\frac{4.06275}{0.9687}=4.194023\ \text{BRL por cada CHF.}
+\]
+
+Por qu\'e funciona: si $1$ USD $=b_0$ BRL y $1$ USD $=a_0$ CHF, entonces $a_0$ CHF equivalen a $b_0$ BRL, y por tanto $1$ CHF equivale a $b_0/a_0$ BRL.
+
+\subsubsection*{Paso 2: la inversi\'on expresada en BRL}
+
+Cada CHF vale $X_0$ BRL, as\'i que el valor invertido en reales es
+
+\[
+V_{\text{BRL}}=V_{\text{CHF}}\cdot X_0=2{,}000{,}000\times 4.194023=8{,}388{,}045.83\ \text{BRL.}
+\]
+
+\subsubsection*{Paso 3: de tasa nominal semestral a tasa efectiva anual}
+
+El enunciado dice $16\,\pc$ ``ASV'': \emph{nominal anual con capitalizaci\'on semestre vencido}. El $16\,\pc$ es una tasa nominal que se reparte en dos periodos de seis meses; no es la tasa que realmente se gana en un a\~no.
+
+\emph{(a) Tasa semestral vencida.} Se divide la tasa nominal entre el n\'umero de semestres por a\~no:
+
+\[
+i_{s}=\frac{j}{m}=\frac{0.16}{2}=0.08=8\,\pc\ \text{por semestre.}
+\]
+
+\emph{(b) Tasa efectiva anual.} Un a\~no tiene dos semestres y el capital crece $8\,\pc$ en cada uno, de modo que se capitaliza dos veces:
+
+\[
+i_{\text{EA}}=(1+i_s)^{m}-1=(1.08)^{2}-1=0.1664=16.64\,\pc\ \text{efectivo anual (en BRL).}
+\]
+
+La tasa efectiva ($16.64\,\pc$) es mayor que la nominal ($16\,\pc$) porque en el segundo semestre los intereses del primero tambi\'en ganan intereses.
+
+\subsubsection*{Paso 4: los BRL al final del tercer a\~no}
+
+Con una tasa efectiva anual, el valor futuro tras $n=3$ a\~nos es el capital multiplicado por $(1+i_{\text{EA}})^n$:
+
+\[
+VF_{\text{BRL}}=V_{\text{BRL}}\,(1+i_{\text{EA}})^{n}
+=8{,}388{,}045.83\times(1.1664)^{3}
+=8{,}388{,}045.83\times 1.586874
+=13{,}310{,}774.55\ \text{BRL.}
+\]
+
+Es lo mismo que capitalizar $6$ semestres al $8\,\pc$, pues $(1.08)^6=(1.1664)^3$.
+
+\subsubsection*{Paso 5: tipo de cambio BRL/CHF al final}
+
+Con los tipos de cambio actuales se repite el cruce del Paso 1:
+
+\[
+X_3=\frac{b_3}{a_3}=\frac{5.32004}{0.92447}=5.754692\ \text{BRL por cada CHF.}
+\]
+
+Ahora 1 CHF compra $5.754692$ BRL, frente a $4.194023$ BRL al inicio. El BRL se deprecia frente al CHF: hace falta m\'as BRL para comprar el mismo franco, y por eso los reales recibidos valen menos francos.
+
+\subsubsection*{Paso 6: los CHF al final del tercer a\~no}
+
+Para pasar de BRL a CHF se divide entre el tipo de cambio BRL/CHF (que mide BRL por cada CHF):
+
+\[
+VF_{\text{CHF}}=\frac{VF_{\text{BRL}}}{X_3}
+=\frac{13{,}310{,}774.55}{5.754692}=2{,}313{,}029.93\ \text{CHF.}
+\]
+
+La inversi\'on de $2{,}000{,}000$ CHF se convirti\'o en $2{,}313{,}029.93$ CHF, una ganancia de $313{,}029.93$ CHF.
+
+\subsubsection*{Paso 7: rentabilidad anual efectiva en CHF}
+
+Se conocen el capital inicial y el valor final, ambos en CHF, y han pasado 3 a\~nos. De $VF_{\text{CHF}}=V_{\text{CHF}}\,(1+i_{\text{CHF}})^{n}$ se despeja:
+
+\[
+i_{\text{CHF}}=\left(\frac{VF_{\text{CHF}}}{V_{\text{CHF}}}\right)^{1/n}-1
+=\left(\frac{2{,}313{,}029.93}{2{,}000{,}000}\right)^{1/3}-1
+=4.9664\,\pc.
+\]
+
+\subsection{Verificaci\'on del resultado}
+
+Si el BRL pierde valor frente al CHF, la tasa en CHF debe ser la tasa en BRL ajustada por la depreciaci\'on anual del BRL.
+
+\begin{enumerate}
+\item El tipo de cambio BRL/CHF pas\'o de $4.194023$ a $5.754692$, un aumento total de $37.21\,\pc$. En promedio anual: $\delta=(X_3/X_0)^{1/n}-1=11.12\,\pc$.
+\item Debe cumplirse $1+i_{\text{CHF}}=\dfrac{1+i_{\text{EA}}}{1+\delta}$:
+\[
+\frac{1.1664}{1+0.1112}-1\approx 4.97\,\pc,
+\]
+que coincide (salvo redondeo) con el $4.9664\,\pc$ del Paso 7.
+\end{enumerate}
+
+\subsection{Respuesta del Ejercicio 5}
+
+\caja{\textbf{Francos suizos obtenidos al final del tercer a\~no:} $2{,}313{,}029.93$ CHF.\\[0.3em]
+\textbf{Rentabilidad anual efectiva en francos suizos:} $4.97\,\pc$ (m\'as exactamente, $4.9664\,\pc$).}
+
+La inversi\'on rindi\'o $16.64\,\pc$ efectivo anual en reales, pero solo cerca de $4.97\,\pc$ en francos, porque el real se deprecia frente al franco durante los 3 a\~nos.
+
+%=====================================================================
+\section{Ejercicio 6: costo financiero de tres pr\'estamos en distintas monedas}
+%=====================================================================
+
+\subsection{Enunciado}
+
+\caja{La empresa mexicana ``Tumex'' est\'a comprando una mina de caliza en Per\'u por valor de USD $200$ millones. La empresa cuenta con USD $30$ millones y el resto lo debe financiar con el sistema financiero a un plazo de 6 a\~nos. Tiene 3 alternativas:
+\begin{itemize}
+\item El banco INCA le presta al $10\,\pc$ en PEN (soles peruanos).
+\item El banco AZTECA le presta en MXN (pesos mexicanos) al $12\,\pc$.
+\item El banco APACHE le presta al $6\,\pc$ en USD.
+\end{itemize}
+Las tasas de cambio al momento del desembolso son: PEN/USD $=3.50$ y MXN/USD $=22.30$. La variaci\'on esperada del tipo de cambio es: PEN/USD, $5.5\,\pc$ anual; MXN/USD, $7\,\pc$ anual. ¿Cu\'al es la alternativa m\'as barata y cu\'anto es su costo financiero en la moneda de la empresa, que es el MXN?}
+
+\subsection{Idea de la soluci\'on}
+
+Las tres tasas ($10\,\pc$, $12\,\pc$ y $6\,\pc$) no se pueden comparar directamente porque est\'an en monedas distintas. Un pr\'estamo en una moneda que se deprecia frente al peso mexicano cuesta m\'as de lo que dice su tasa; si la moneda se aprecia, cuesta menos. La soluci\'on convierte cada pr\'estamo en una serie de flujos de caja \emph{en MXN} y calcula la tasa interna de retorno (TIR) de esos flujos, que es el costo financiero en MXN:
+
+\begin{enumerate}
+\item Calcular el monto a financiar y proyectar los tipos de cambio de los 6 a\~nos.
+\item Para cada banco, construir la tabla de amortizaci\'on con cuota fija en la moneda del pr\'estamo.
+\item Convertir cada cuota a MXN con el tipo de cambio proyectado del a\~no en que se paga.
+\item Armar el flujo de caja en MXN: un ingreso en el a\~no 0 (el pr\'estamo recibido) y egresos en los a\~nos 1 a 6 (las cuotas).
+\item Calcular la TIR de cada flujo y quedarse con la menor.
+\end{enumerate}
+
+\subsection{Conceptos que se usan}
+
+\paragraph{Cuota fija.} Un pr\'estamo de capital $P$, a tasa $i$ por periodo y $n$ periodos, con cuota constante, tiene cuota
+\[
+C=P\,\frac{i}{1-(1+i)^{-n}}.
+\]
+
+\paragraph{Tabla de amortizaci\'on.} Sea $S_t$ el saldo de la deuda al final del a\~no $t$, con $S_0=P$. Para cada a\~no $t=1,\dots,n$:
+\[
+I_t=S_{t-1}\,i,\qquad A_t=C-I_t,\qquad S_t=S_{t-1}-A_t .
+\]
+$I_t$ es el inter\'es, $A_t$ la amortizaci\'on (la parte de la cuota que reduce la deuda). Al pagar la \'ultima cuota, $S_n=0$.
+
+\paragraph{Tasa interna de retorno (TIR).} Es la tasa $r$ que hace cero el valor presente de todos los flujos $F_t$:
+\[
+\sum_{t=0}^{n}\frac{F_t}{(1+r)^t}=0 .
+\]
+Cuando los flujos son un ingreso inicial (el pr\'estamo) y egresos posteriores (las cuotas), $r$ es el costo efectivo anual del pr\'estamo.
+
+\paragraph{Tipo de cambio cruzado.} Con PEN/USD y MXN/USD se obtiene el cruce
+\[
+\text{MXN/PEN}=\frac{\text{MXN/USD}}{\text{PEN/USD}} .
+\]
+
+\subsection{Variables y datos}
+
+\begin{center}
+\begin{tabular}{l l r}\toprule
+Variable & Significado & Valor\\\midrule
+$K$ & Inversi\'on total & $200{,}000{,}000$ USD\\
+$K_p$ & Capital propio & $30{,}000{,}000$ USD\\
+$P$ & Monto a financiar & $K-K_p$\\
+$n$ & Plazo & $6$ a\~nos\\
+$i_{\text{PEN}},\ i_{\text{MXN}},\ i_{\text{USD}}$ & Tasas de INCA, AZTECA y APACHE & $10\,\pc$, $12\,\pc$ y $6\,\pc$\\
+$s^{\text{PEN}}_0,\ s^{\text{MXN}}_0$ & PEN/USD y MXN/USD al desembolso & $3.50$ y $22.30$\\
+$g_{\text{PEN}},\ g_{\text{MXN}}$ & Variaci\'on anual esperada de PEN/USD y MXN/USD & $5.5\,\pc$ y $7\,\pc$\\\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Desarrollo paso a paso}
+
+\subsubsection*{Paso 1: monto a financiar}
+
+\[
+P=K-K_p=200{,}000{,}000-30{,}000{,}000=170{,}000{,}000\ \text{USD.}
+\]
+
+\subsubsection*{Paso 2: proyecci\'on de los tipos de cambio}
+
+Se parte del tipo de cambio del a\~no 0 y se aplica la variaci\'on anual esperada compuesta a\~no tras a\~no:
+
+\[
+s^{\text{PEN}}_t=s^{\text{PEN}}_0\,(1+g_{\text{PEN}})^{t}=3.5\,(1.055)^{t},\qquad
+s^{\text{MXN}}_t=s^{\text{MXN}}_0\,(1+g_{\text{MXN}})^{t}=22.3\,(1.07)^{t}.
+\]
+
+El cruce MXN/PEN de cada a\~no es
+\[
+c_t=\frac{s^{\text{MXN}}_t}{s^{\text{PEN}}_t},\qquad t=0,1,\dots,6 .
+\]
+
+\begin{table}[H]\centering\small
+\caption{Proyecci\'on de los tipos de cambio.}\label{tab:fx}
+\begin{tabular}{l r r r r r r r}\toprule
+Año & 0 & 1 & 2 & 3 & 4 & 5 & 6\\\midrule
+PEN/USD & 3.5000 & 3.6925 & 3.8956 & 4.1098 & 4.3359 & 4.5744 & 4.8259\\
+MXN/USD & 22.3000 & 23.8610 & 25.5313 & 27.3185 & 29.2308 & 31.2769 & 33.4663\\
+MXN/PEN & 6.3714 & 6.4620 & 6.5539 & 6.6471 & 6.7416 & 6.8374 & 6.9347\\
+\bottomrule\end{tabular}\end{table}
+
+Los dos tipos de cambio suben, as\'i que ambas monedas se deprecian frente al USD. El MXN se deprecia m\'as ($7\,\pc$) que el PEN ($5.5\,\pc$), por eso el cruce $c_t$ tambi\'en sube: cada a\~no hacen falta m\'as pesos mexicanos para comprar un sol peruano. Esa subida es $\dfrac{1.07}{1.055}-1=1.4218\,\pc$ por a\~no.
+
+\subsubsection*{Paso 3: Alternativa 1, banco INCA, pr\'estamo en PEN}
+
+\paragraph{3.1 Monto del pr\'estamo en PEN.} Los USD a financiar se convierten a soles con el tipo de cambio del desembolso:
+\[
+P_{\text{PEN}}=P\cdot s^{\text{PEN}}_0=170{,}000{,}000\times 3.5=595{,}000{,}000\ \text{PEN.}
+\]
+
+\paragraph{3.2 Cuota fija en PEN.} Con $i_{\text{PEN}}=10\,\pc$ y $n=6$:
+\[
+C_{\text{PEN}}=P_{\text{PEN}}\,\frac{i_{\text{PEN}}}{1-(1+i_{\text{PEN}})^{-n}}=595{,}000{,}000\times\frac{0.10}{1-(1.10)^{-6}}=136{,}616{,}391.32\ \text{PEN.}
+\]
+Se paga la misma cuota cada a\~no.
+
+\paragraph{3.3 Tabla de amortizaci\'on en PEN.} Se aplican las f\'ormulas $I_t=S_{t-1}\,i_{\text{PEN}}$, $A_t=C_{\text{PEN}}-I_t$ y $S_t=S_{t-1}-A_t$, con $S_0=P_{\text{PEN}}$ (primeras cinco columnas num\'ericas de la tabla~\ref{tab:a1}).
+
+\paragraph{3.4 Cuota convertida a MXN.} Cada cuota en PEN se multiplica por el cruce MXN/PEN \emph{del a\~no en que se paga}:
+\[
+C^{\text{MXN}}_t=C_{\text{PEN}}\cdot c_t,\qquad t=1,\dots,6 .
+\]
+Aunque la cuota en PEN es constante, la cuota en MXN crece cada a\~no porque $c_t$ crece.
+
+\paragraph{3.5 Flujo de caja en MXN.} En el a\~no 0 la empresa \emph{recibe} el pr\'estamo, valorado en su moneda al tipo de cambio MXN/USD del desembolso; en los a\~nos 1 a 6 \emph{paga}:
+\[
+F_0=P\cdot s^{\text{MXN}}_0=170{,}000{,}000\times 22.3=3{,}791{,}000{,}000\ \text{MXN},\qquad
+F_t=-C^{\text{MXN}}_t\quad(t=1,\dots,6).
+\]
+
+\begin{table}[H]\centering\small
+\caption{Alternativa 1, banco INCA: amortizaci\'on en PEN y flujo en MXN.}\label{tab:a1}
+\begin{tabular}{c r r r r r r r}\toprule
+Año & Saldo ini. & Interés & Amortiz. & Cuota & Saldo fin. & Cuota (MXN) & Flujo (MXN)\\
+& (PEN) & (PEN) & (PEN) & (PEN) & (PEN) & (MXN) & (MXN)\\\midrule
+0 & & & & & & & 3{,}791.00\\
+1 & 595.00 & 59.50 & 77.12 & 136.62 & 517.88 & 882.82 & $-$882.82\\
+2 & 517.88 & 51.79 & 84.83 & 136.62 & 433.06 & 895.37 & $-$895.37\\
+3 & 433.06 & 43.31 & 93.31 & 136.62 & 339.74 & 908.10 & $-$908.10\\
+4 & 339.74 & 33.97 & 102.64 & 136.62 & 237.10 & 921.01 & $-$921.01\\
+5 & 237.10 & 23.71 & 112.91 & 136.62 & 124.20 & 934.11 & $-$934.11\\
+6 & 124.20 & 12.42 & 124.20 & 136.62 & 0.00 & 947.39 & $-$947.39\\
+\bottomrule\end{tabular}
+\par\smallskip{\footnotesize Cifras en millones de la unidad indicada.}\end{table}
+
+\paragraph{3.6 Costo financiero (TIR en MXN).} Se busca la tasa $r_1$ que cumple
+\[
+F_0+\sum_{t=1}^{6}\frac{F_t}{(1+r_1)^{t}}=0
+\quad\Longrightarrow\quad
+3{,}791{,}000{,}000-\sum_{t=1}^{6}\frac{C^{\text{MXN}}_t}{(1+r_1)^{t}}=0 ,
+\]
+cuya soluci\'on es
+\[
+r_1=11.5640\,\pc\ \text{efectivo anual en MXN.}
+\]
+
+\subsubsection*{Paso 4: Alternativa 2, banco AZTECA, pr\'estamo en MXN}
+
+Este pr\'estamo ya est\'a en la moneda de la empresa, as\'i que no hay conversi\'on.
+
+\paragraph{4.1 Monto y cuota.}
+\[
+P_{\text{MXN}}=P\cdot s^{\text{MXN}}_0=170{,}000{,}000\times 22.3=3{,}791{,}000{,}000\ \text{MXN},
+\]
+\[
+C_{\text{MXN}}=P_{\text{MXN}}\,\frac{i_{\text{MXN}}}{1-(1+i_{\text{MXN}})^{-n}}=3{,}791{,}000{,}000\times\frac{0.12}{1-(1.12)^{-6}}=922{,}068{,}698.55\ \text{MXN.}
+\]
+
+\paragraph{4.2 Tabla y flujo.} La tabla se construye con las mismas f\'ormulas del Paso 3 (con $i_{\text{MXN}}$). El flujo es $F_0=+P_{\text{MXN}}$ y $F_t=-C_{\text{MXN}}$ para $t=1,\dots,6$.
+
+\begin{table}[H]\centering\small
+\caption{Alternativa 2, banco AZTECA: amortizaci\'on y flujo en MXN.}\label{tab:a2}
+\begin{tabular}{c r r r r r r}\toprule
+Año & Saldo ini. & Interés & Amortiz. & Cuota & Saldo fin. & Flujo\\
+& (MXN) & (MXN) & (MXN) & (MXN) & (MXN) & (MXN)\\\midrule
+0 & & & & & & 3{,}791.00\\
+1 & 3{,}791.00 & 454.92 & 467.15 & 922.07 & 3{,}323.85 & $-$922.07\\
+2 & 3{,}323.85 & 398.86 & 523.21 & 922.07 & 2{,}800.64 & $-$922.07\\
+3 & 2{,}800.64 & 336.08 & 585.99 & 922.07 & 2{,}214.65 & $-$922.07\\
+4 & 2{,}214.65 & 265.76 & 656.31 & 922.07 & 1{,}558.34 & $-$922.07\\
+5 & 1{,}558.34 & 187.00 & 735.07 & 922.07 & 823.28 & $-$922.07\\
+6 & 823.28 & 98.79 & 823.28 & 922.07 & 0.00 & $-$922.07\\
+\bottomrule\end{tabular}
+\par\smallskip{\footnotesize Cifras en millones de MXN.}\end{table}
+
+\paragraph{4.3 Costo financiero.}
+\[
+r_2=12.0000\,\pc.
+\]
+La TIR es exactamente la tasa del contrato porque no hay conversi\'on de monedas. Esta alternativa sirve de control: si la TIR del flujo no diera $12\,\pc$, habr\'ia un error en la tabla.
+
+\subsubsection*{Paso 5: Alternativa 3, banco APACHE, pr\'estamo en USD}
+
+\paragraph{5.1 Cuota fija en USD.} El pr\'estamo es $P=170{,}000{,}000$ USD. Con $i_{\text{USD}}=6\,\pc$ y $n=6$:
+\[
+C_{\text{USD}}=P\,\frac{i_{\text{USD}}}{1-(1+i_{\text{USD}})^{-n}}=170{,}000{,}000\times\frac{0.06}{1-(1.06)^{-6}}=34{,}571{,}646.84\ \text{USD.}
+\]
+
+\paragraph{5.2 Cuota convertida a MXN.} Se usa el tipo de cambio MXN/USD proyectado del a\~no de pago:
+\[
+C^{\text{MXN}}_t=C_{\text{USD}}\cdot s^{\text{MXN}}_t,\qquad t=1,\dots,6 .
+\]
+El flujo es $F_0=+3{,}791{,}000{,}000$ MXN y $F_t=-C^{\text{MXN}}_t$ para $t=1,\dots,6$.
+
+\begin{table}[H]\centering\small
+\caption{Alternativa 3, banco APACHE: amortizaci\'on en USD y flujo en MXN.}\label{tab:a3}
+\begin{tabular}{c r r r r r r r}\toprule
+Año & Saldo ini. & Interés & Amortiz. & Cuota & Saldo fin. & Cuota (MXN) & Flujo (MXN)\\
+& (USD) & (USD) & (USD) & (USD) & (USD) & (MXN) & (MXN)\\\midrule
+0 & & & & & & & 3{,}791.00\\
+1 & 170.00 & 10.20 & 24.37 & 34.57 & 145.63 & 824.91 & $-$824.91\\
+2 & 145.63 & 8.74 & 25.83 & 34.57 & 119.79 & 882.66 & $-$882.66\\
+3 & 119.79 & 7.19 & 27.38 & 34.57 & 92.41 & 944.44 & $-$944.44\\
+4 & 92.41 & 5.54 & 29.03 & 34.57 & 63.38 & 1{,}010.56 & $-$1{,}010.56\\
+5 & 63.38 & 3.80 & 30.77 & 34.57 & 32.61 & 1{,}081.29 & $-$1{,}081.29\\
+6 & 32.61 & 1.96 & 32.61 & 34.57 & 0.00 & 1{,}156.98 & $-$1{,}156.98\\
+\bottomrule\end{tabular}
+\par\smallskip{\footnotesize Cifras en millones de la unidad indicada.}\end{table}
+
+\paragraph{5.3 Costo financiero.}
+\[
+r_3=13.4200\,\pc.
+\]
+Aunque la tasa en USD es solo $6\,\pc$, el d\'olar cuesta cada a\~no m\'as pesos y el costo real para Tumex es mucho mayor.
+
+\subsubsection*{Paso 6: resumen y decisi\'on}
+
+\begin{center}
+\begin{tabular}{l c c}\toprule
+Alternativa & Tasa pactada & Costo financiero en MXN (TIR)\\\midrule
+1. INCA (PEN) & $10\,\pc$ & $11.5640\,\pc$\\
+2. AZTECA (MXN) & $12\,\pc$ & $12.0000\,\pc$\\
+3. APACHE (USD) & $6\,\pc$ & $13.4200\,\pc$\\\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Verificaci\'on con una f\'ormula cerrada}
+
+La TIR se puede comprobar sin hacer la tabla. Si el tipo de cambio cambia a una tasa constante $g$ por a\~no, el flujo en MXN es $F_t=-S_0\,C\,(1+g)^t$ y el desembolso inicial es $S_0\,P$, donde $S_0$ es el tipo de cambio inicial. Dividiendo todo entre $S_0$, la ecuaci\'on de la TIR queda
+\[
+P-\sum_{t=1}^{n}\frac{C}{\left(\dfrac{1+r}{1+g}\right)^{t}}=0 ,
+\]
+que es la ecuaci\'on del pr\'estamo original con la tasa $\dfrac{1+r}{1+g}-1=i$. Despejando:
+\[
+\boxed{\,1+r=(1+i)(1+g)\,}
+\]
+donde $i$ es la tasa pactada y $g$ la variaci\'on anual del tipo de cambio entre la moneda del pr\'estamo y el MXN. Aplicado a cada alternativa:
+
+\begin{itemize}
+\item INCA: $g=\dfrac{1.07}{1.055}-1$ (la variaci\'on del cruce MXN/PEN), as\'i que $r_1=1.10\times\dfrac{1.07}{1.055}-1=11.5640\,\pc$.
+\item AZTECA: no hay variaci\'on cambiaria, as\'i que $r_2=1.12\times 1-1=12\,\pc$.
+\item APACHE: $g=7\,\pc$, as\'i que $r_3=1.06\times 1.07-1=13.42\,\pc$.
+\end{itemize}
+
+Los tres valores coinciden con las TIR calculadas con las tablas. Esto tambi\'en explica el orden del resultado: frente al peso mexicano el sol se aprecia solo $1.42\,\pc$ anual, mientras que el d\'olar se aprecia $7\,\pc$ anual; por eso, aunque la tasa en PEN es m\'as alta que la tasa en USD, el pr\'estamo en PEN sale m\'as barato.
+
+\subsection{Respuesta del Ejercicio 6}
+
+\caja{\textbf{Alternativa m\'as barata:} la 1, el pr\'estamo del banco \textbf{INCA} en soles peruanos (PEN).\\[0.3em]
+\textbf{Costo financiero en MXN:} $11.5640\,\pc$ efectivo anual, frente a $12\,\pc$ de AZTECA y $13.42\,\pc$ de APACHE.}
+
+\subsection{Observaciones}
+
+\begin{itemize}
+\item \textbf{Saldos finales.} El saldo final del a\~no 6 en cada tabla es cero salvo errores de redondeo de la computadora (del orden de $10^{-7}$).
+\item \textbf{Total pagado.} Las cuotas en MXN suman $5{,}488.79$ millones (INCA), $5{,}532.41$ millones (AZTECA) y $5{,}900.85$ millones (APACHE). La suma total no es el criterio de decisi\'on, porque no tiene en cuenta cu\'ando se paga cada cuota; la TIR s\'i lo hace.
+\item \textbf{Supuesto del modelo.} El resultado depende de la variaci\'on cambiaria esperada ($5.5\,\pc$ y $7\,\pc$). Si el peso mexicano se depreciara menos o m\'as de lo previsto, el orden de las alternativas podr\'ia cambiar. Con los datos del enunciado, INCA es la m\'as barata.
+\end{itemize}
+
+\end{document}
